@@ -1,1 +1,9 @@
-../Core/Src/INA219.c:15:10:INA219Read_cx	32	static
+../Core/Src/INA219.c:26:10:INA219Read_cx	32	static
+../Core/Src/INA219.c:40:6:INA219_BitReset	40	static
+../Core/Src/INA219.c:52:6:INA219_INIT_Calibrate	48	static
+../Core/Src/INA219.c:85:6:INA219_INIT	40	static
+../Core/Src/INA219.c:96:6:INA219_Calibrate	40	static
+../Core/Src/INA219.c:115:10:INA219Read_BusV	32	static
+../Core/Src/INA219.c:135:10:INA219Read_Current	32	static
+../Core/Src/INA219.c:148:7:INA219Read_ShuntV	40	static
+../Core/Src/INA219.c:171:10:INA219Read_Power	32	static

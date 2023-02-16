@@ -26,6 +26,7 @@
 //#include "LCDrv_f4_spi/ili9341.h"
 //#include "LCDrv_f4_spi/bmp.h"
 
+#include <stdio.h>
 #include <string.h>
 #include <stdarg.h>
 #include "ili9341/ili9341.h"
@@ -57,12 +58,15 @@ SPI_HandleTypeDef hspi2;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
+char texx[100] = {0};
 
 union {
 	uint8_t U8[12];
 	uint16_t U16[6];
 }INATT;
-INA219_RD_Strc inata;
+
+INA219_Read_Set inata;
+INA219_Conf_Strc cofgra;
 
 uint32_t timestamp_one = 0;
 /* USER CODE END PV */
@@ -123,6 +127,20 @@ int main(void)
   HAL_Delay(100);
   ILI9341_FillScreen(ILI9341_BLACK);
 
+  INA219_INIT_Calibrate(&hi2c1, INA219_ADDR_1);
+//  cofgra.INA219CF.reset = 0;
+//  cofgra.INA219CF.BRNG = BRNG_FSR_16V;
+//  cofgra.INA219CF.PGA = PGA_GainD8_320mv;
+//  cofgra.INA219CF.BADC = ADCI_12bit_532uS;
+//  cofgra.INA219CF.SADC = ADCI_10bit_148uS;
+//  cofgra.INA219CF.Mode = INAM_ShuntBusV_Continuous;
+//
+//  INA219_INIT(&hi2c1, INA219_ADDR_1, cofgra);
+//  INA219_Calibrate(&hi2c1, INA219_ADDR_1);
+
+
+  char temp[]="----------------- F411_Verita_Master --------------------\r\n";
+  HAL_UART_Transmit(&huart2, (uint8_t*)temp, strlen(temp),10);
 
   /* USER CODE END 2 */
 
@@ -143,25 +161,24 @@ int main(void)
 
 		  //ILI9341_FillRectangle(50, 50, 50, 50, ILI9341_RED);
 
-		  HAL_I2C_Mem_Read(&hi2c1, INA219_ADDR_1, 0x00, I2C_MEMADD_SIZE_8BIT, &INATT.U8[0], 2, 10);
-		  INATT.U16[3] = (INATT.U8[0] << 8) | INATT.U8[1];
 
-//		  HAL_I2C_Mem_Read(&hi2c1, INA219_ADDR_1, 0x01, I2C_MEMADD_SIZE_8BIT, &inata.D8[0], 4, 100);
-		  HAL_I2C_Mem_Read(&hi2c1, INA219_ADDR_1, 0x00, I2C_MEMADD_SIZE_8BIT, &inata.D8[1], 2, 10);
-		  INATT.U16[4] = inata.INA219RD.CURR__ | inata.INA219RD.__ENT;
+//		  HAL_I2C_Mem_Read(&hi2c1, INA219_ADDR_1, 0x00, I2C_MEMADD_SIZE_8BIT, &INATT.U8[0], 2, 10);
+//		  INATT.U16[3] = (INATT.U8[0] << 8) | INATT.U8[1];
 
-		  INATT.U16[1] = INA219Read_cx(&hi2c1, INA219_ADDR_1, INA219_RG_Config);
-
-		  INATT.U16[2] = INA219Read_cx(&hi2c1, INA219_ADDR_1, INA219_RG_Current);
-
+		  //INATT.U16[1] = INA219Read_cx(&hi2c1, INA219_ADDR_1, INA219_RG_Config);
+		  //INATT.U16[2] = INA219Read_cx(&hi2c1, INA219_ADDR_1, INA219_RG_Current);
 
 
 //		  HAL_I2C_Master_Transmit(&hi2c1, INA219_ADDR_1, 0x00, 1, 10);
 //		  HAL_I2C_Master_Receive(&hi2c1, INA219_ADDR_1, &INATT.U8[3], 2, 10);
+		  inata.Bus_V   = INA219Read_BusV(&hi2c1, INA219_ADDR_1);
+		  inata.CURRENT = INA219Read_Current(&hi2c1, INA219_ADDR_1);
+		  inata.POWER   = INA219Read_Power(&hi2c1, INA219_ADDR_1);
+		  inata.SHUNT_V = INA219Read_ShuntV(&hi2c1, INA219_ADDR_1);
 
-//		  HAL_I2C_Master_Seq_Transmit_IT(&hi2c1, INA219_ADDR_1, 0x00, 1, I2C_FIRST_FRAME);
-//		  //HAL_I2C_Master_Seq_Receive_IT(&hi2c1, INA219_ADDR_1, &INATT.U8[10], 1, I2C_NEXT_FRAME);
-//		  HAL_I2C_Master_Seq_Receive_IT(&hi2c1, INA219_ADDR_1, &INATT.U8[10], 2, I2C_LAST_FRAME);
+		  inata.Calibra =  INA219Read_cx(&hi2c1, INA219_ADDR_1, INA219_RG_Calibra);
+		  inata.Config = INA219Read_cx(&hi2c1, INA219_ADDR_1, INA219_RG_Config);
+
 	  }
   }
   /* USER CODE END 3 */
@@ -362,9 +379,19 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(SPI2_RES_GPIO_Port, &GPIO_InitStruct);
 
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
+
 }
 
 /* USER CODE BEGIN 4 */
+
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
+	if(GPIO_Pin == GPIO_PIN_13){
+		INA219_BitReset(&hi2c1, INA219_ADDR_1);
+		}
+}
 
 /* USER CODE END 4 */
 
