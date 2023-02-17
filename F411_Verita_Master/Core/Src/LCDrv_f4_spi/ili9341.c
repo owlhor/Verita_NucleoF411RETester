@@ -10,6 +10,7 @@
 
 #include <string.h>
 #include "main.h"
+#include "math.h"
 #include "lcd.h"
 #include "bmp.h"
 #include "ili9341.h"
@@ -583,6 +584,186 @@ void ili9341_ReadRGBImage(uint16_t Xpos, uint16_t Ypos, uint16_t Xsize, uint16_t
   LCD_IO_WriteCmd8MultipleData8(ILI9341_PIXFMT, (uint8_t *)"\x55", 1); // Return to 16bit pixel mode
   ILI9341_LCDMUTEX_POP();
 }
+
+
+/* ---------------------------------------FontWrite cat cat by owlhor, adapt from ili9486, STAMPR----------------------------------------*/
+/**
+  * @brief  Write 1 char on display
+  * @param  Xpo:   Start X position in the LCD
+  * @param  Ypo:   Start Y position in the LCD
+  * @param  chr:  Display Char
+  * @param  fonto: font select (from font.h)
+  * @param  RGB_Coder: Text Color
+  * @param  RGB_bg: Char background Color
+  * @retval None
+  */
+void ili9341_WriteChar(uint16_t Xpo, uint16_t Ypo, const char *chr,sFONT fonto, uint16_t RGB_Coder, uint16_t RGB_bg){
+	/*ex
+	 * ili9341_WriteChar(140, 50, "E", Font24, cl_ORANGE, cl_BLACK);
+	 * */
+	//// stored font data
+	uint32_t hop32 = 0;
+	uint8_t b8[4] = {0};
+
+	//uint8_t pren = 0;
+	/* _ X+ ------>
+	 * Y+
+	 * |
+	 * |
+	 * V
+	 * font_h x width=>  column x row per jump / start pos for char 1 2 3 4 ...
+	 * font8  x 5 =>  8x1 byte per jump  8 16 24 32 40
+	 * font12 x 7 =>  12x1 byte per jump 12 24 36 48 60
+	 * font16 x 11=>  16x2 byte per jump 32 64 96 128 160
+	 * font24 x 17=>  24x3 byte per jump 72 144 216 288 310
+	 *
+	 *  Data loading = b + c + k;
+	 * b = (char ASCII Code * high * row per jump) --> Sorting start position
+	 * c = i * rowbox -> jump to next column in next i rowloop
+	 * k => jump to next row in that column
+	 * */
+
+	//// find num of bit rows per jump in fonts.c
+	int rowbox = ceilf((float)(fonto.Width) / 8);
+
+	//// choose MSB check pos for each font size
+	//// 0x80 , 0x8000 , 0x 800000
+	uint32_t clif_msb = 0x80 << (8 * (rowbox - 1));
+
+	//// -32 to offset sync ASCII Table start " " at 32
+	//// double for loop as one char table
+	for(int i = 0; i < fonto.Height; i++){
+		hop32 = 0;
+		for(int k = 0;k < rowbox;k++){
+			b8[k] = fonto.table[((int)(*chr - 32) * fonto.Height * rowbox) + (i * rowbox) + k];
+			hop32 = (hop32 << 8) + b8[k];
+		}
+
+		for(int j = 0; j < fonto.Width; j++){
+			//// if valuein fonttable is 1
+			if((hop32 << j) & clif_msb){ // buu32.b32
+				ili9341_WritePixel(Xpo + j, Ypo + i, RGB_Coder);
+			}
+			//// for background write
+			else{
+				ili9341_WritePixel(Xpo + j, Ypo + i, RGB_bg);
+			}
+
+		}
+	}
+}
+
+/**
+  * @brief  Write 1 char on display (without BG color, more speed in some case)
+  * @param  Xpo:   Start X position in the LCD
+  * @param  Ypo:   Start Y position in the LCD
+  * @param  chr:  Display Char
+  * @param  fonto: font select (from font.h)
+  * @param  RGB_Coder: Text Color
+  * @retval None
+  */
+void ili9341_WriteCharNoBG(uint16_t Xpo, uint16_t Ypo, const char *chr,sFONT fonto, uint16_t RGB_Coder){
+	/*ex
+	 * ili9341_WriteCharNoBG(10, 30, "E", Font24, cl_ORANGE);
+	 * */
+	//// stored font data
+	uint32_t hop32 = 0;
+	uint8_t b8[4] = {0};
+
+	//// find num of bit rows per jump in fonts.c
+	int rowbox = ceilf((float)(fonto.Width) / 8);
+	uint32_t clif_msb = 0x80 << (8 * (rowbox - 1));
+
+	for(int i = 0; i < fonto.Height; i++){
+		hop32 = 0;
+		for(int k = 0;k < rowbox;k++){
+			b8[k] = fonto.table[((int)(*chr - 32) * fonto.Height * rowbox) + (i * rowbox) + k];
+			hop32 = (hop32 << 8) + b8[k];
+		}
+
+		for(int j = 0; j < fonto.Width; j++){
+			//// if valuein fonttable is 1
+			if((hop32 << j) & clif_msb){ // buu32.b32
+				ili9341_WritePixel(Xpo + j, Ypo + i, RGB_Coder);
+			}
+		}
+	}
+}
+
+/**
+  * @brief  Write text string on display
+  * @param  Xpo:   Start X position in the LCD
+  * @param  Ypo:   Start Y position in the LCD
+  * @param  Strr:  Display Text
+  * @param  fonto: font select (from font.h)
+  * @param  RGB_Coder: Text Color
+  * @param  RGB_bg: Text background Color
+  * @retval None
+  */
+void ili9341_WriteString(uint16_t Xpo, uint16_t Ypo,const char* strr,sFONT fonto, uint16_t RGB_Coder, uint16_t RGB_bg){
+	/*ex
+	 * ili9341_WriteString(20, 300, "Helios xTerra", Font20, cl_WHITE, cl_BLACK);
+	 * */
+	uint16_t ili_heigh = ili9341_GetLcdPixelHeight();
+	uint16_t ili_width = ili9341_GetLcdPixelWidth();
+	while(*strr){
+	//// Check screen overflow / new line
+		if(Xpo + fonto.Width >= ili_width){
+			Xpo = 0;
+			Ypo += fonto.Height;
+
+			if(Ypo + fonto.Height >= ili_heigh){
+				break;
+			}
+
+			if(*strr == ' ') {
+				// skip spaces in the beginning of the new line
+				strr++;
+				continue;
+			}
+		}
+		//ST7735_WriteChar(x, y, *str, font, color, bgcolor);
+		ili9341_WriteChar(Xpo, Ypo, strr, fonto, RGB_Coder, RGB_bg);
+		Xpo += fonto.Width;
+		strr++;
+	}
+}
+
+/**
+  * @brief  Write text string on display
+  * @param  Xpo:   Start X position in the LCD
+  * @param  Ypo:   Start Y position in the LCD
+  * @param  Strr:  Display Text
+  * @param  fonto: font select (from font.h)
+  * @param  RGB_Coder: Text Color
+  * @retval None
+  */
+void ili9341_WriteStringNoBG(uint16_t Xpo, uint16_t Ypo,const char* strr,sFONT fonto, uint16_t RGB_Coder){
+	/*ex
+	 * ili9341_WriteString(20, 300, "Helios xTerra", Font20, cl_WHITE, cl_BLACK);
+	 * */
+	uint16_t ili_heigh = ili9341_GetLcdPixelHeight();
+	uint16_t ili_width = ili9341_GetLcdPixelWidth();
+	while(*strr){
+	//// Check screen overflow / new line
+		if(Xpo + fonto.Width >= ili_width){
+			Xpo = 0;
+			Ypo += fonto.Height;
+
+			if(Ypo + fonto.Height >= ili_heigh){
+				break;
+			}
+			if(*strr == ' ') {
+				strr++;
+				continue;
+			}
+		}
+		ili9341_WriteCharNoBG(Xpo, Ypo, strr, fonto, RGB_Coder);
+		Xpo += fonto.Width;
+		strr++;
+	}
+}
+
 
 //-----------------------------------------------------------------------------
 /**

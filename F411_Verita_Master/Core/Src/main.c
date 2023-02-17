@@ -21,17 +21,14 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
-//#include "LCDrv_f4_spi/Fonts/fonts.h"
-//#include "LCDrv_f4_spi/ili9341.h"
-//#include "LCDrv_f4_spi/bmp.h"
-
 #include <stdio.h>
 #include <string.h>
 #include <stdarg.h>
-#include "ili9341/ili9341.h"
-#include "ili9341/fonts.h"
-#include "ili9341/testimg.h"
+
+#include "LCDrv_f4_spi/Fonts/fonts.h"
+#include "LCDrv_f4_spi/ili9341.h"
+#include "LCDrv_f4_spi/bmp.h"
+#include "testimg.h"
 
 #include "INA219.h"
 /* USER CODE END Includes */
@@ -43,6 +40,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+//#define INA219_Wrk
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -69,6 +67,7 @@ INA219_Read_Set inata;
 INA219_Conf_Strc cofgra;
 
 uint32_t timestamp_one = 0;
+uint32_t timestamp_disp = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -118,15 +117,15 @@ int main(void)
   MX_SPI2_Init();
   MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
-//  ili9341_Init();
-//  ili9341_DisplayOn();
 
-  //HAL_I2C_Init(&hi2c1);
+  ili9341_Init();
+  ili9341_DisplayOn();
 
-  ILI9341_Init();
-  HAL_Delay(100);
-  ILI9341_FillScreen(ILI9341_BLACK);
 
+//  ILI9341_Init();
+//  ILI9341_FillScreen(ILI9341_BLACK);
+
+#ifdef INA219_Wrk
   INA219_INIT_Calibrate(&hi2c1, INA219_ADDR_1);
 //  cofgra.INA219CF.reset = 0;
 //  cofgra.INA219CF.BRNG = BRNG_FSR_16V;
@@ -137,7 +136,7 @@ int main(void)
 //
 //  INA219_INIT(&hi2c1, INA219_ADDR_1, cofgra);
 //  INA219_Calibrate(&hi2c1, INA219_ADDR_1);
-
+#endif
 
   char temp[]="----------------- F411_Verita_Master --------------------\r\n";
   HAL_UART_Transmit(&huart2, (uint8_t*)temp, strlen(temp),10);
@@ -155,13 +154,20 @@ int main(void)
 		  timestamp_one += 1000;
 		  HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
 
-//		  ili9341_FillRect(50, 50, 50, 50, cl_RED);
-//		  ili9341_FillRect(50, 100, 50, 50, cl_GREEN);
-//		  ili9341_FillRect(50, 150, 50, 50, cl_BLUE);
 
-		  //ILI9341_FillRectangle(50, 50, 50, 50, ILI9341_RED);
+		  ili9341_FillRect(50, 20, 50, 50, cl_RED);
+		  ili9341_FillRect(100, 20, 50, 50, cl_GREEN);
+		  ili9341_FillRect(150, 20, 50, 50, cl_BLUE);
+
+		  //ili9341_DrawRGBImage(60, 120, 128, 128, (uint16_t*)image_data_ImageoftestN2);
+
+		  ili9341_WriteString(50, 70, "Helios Terra Renai Kaliber Barx Maxon 129035"
+					 " __ --== + &&6.. [ ggg ]??? Rhivalia DIAR Barvarrian"
+					  "vicar nexus iICCTVS "
+				  , Font12, cl_YELLOW, cl_BLACK);
 
 
+#ifdef INA219_Wrk
 //		  HAL_I2C_Mem_Read(&hi2c1, INA219_ADDR_1, 0x00, I2C_MEMADD_SIZE_8BIT, &INATT.U8[0], 2, 10);
 //		  INATT.U16[3] = (INATT.U8[0] << 8) | INATT.U8[1];
 
@@ -169,8 +175,6 @@ int main(void)
 		  //INATT.U16[2] = INA219Read_cx(&hi2c1, INA219_ADDR_1, INA219_RG_Current);
 
 
-//		  HAL_I2C_Master_Transmit(&hi2c1, INA219_ADDR_1, 0x00, 1, 10);
-//		  HAL_I2C_Master_Receive(&hi2c1, INA219_ADDR_1, &INATT.U8[3], 2, 10);
 		  inata.Bus_V   = INA219Read_BusV(&hi2c1, INA219_ADDR_1);
 		  inata.CURRENT = INA219Read_Current(&hi2c1, INA219_ADDR_1);
 		  inata.POWER   = INA219Read_Power(&hi2c1, INA219_ADDR_1);
@@ -178,9 +182,32 @@ int main(void)
 
 		  inata.Calibra =  INA219Read_cx(&hi2c1, INA219_ADDR_1, INA219_RG_Calibra);
 		  inata.Config = INA219Read_cx(&hi2c1, INA219_ADDR_1, INA219_RG_Config);
+#endif
+
+		  } // timestamp_one
+
+
+		  if (HAL_GetTick() >= timestamp_disp){
+			  timestamp_disp += 10;
+
+		   //// Running box ------
+		  int ratte = 1;
+		  int sizo = 30;
+		  int offs = 140;
+		  static uint16_t xsh = 0;
+		  ili9341_FillRect(xsh, offs, ratte ,sizo, cl_MAROON);
+		  xsh += ratte;
+		  ili9341_FillRect(xsh, offs, sizo, sizo, cl_CYAN); //// box
+		  if(xsh >= 400){ // clear
+			  ili9341_FillRect(xsh, offs, sizo, sizo, cl_MAROON);
+			  xsh = 0;
+		  	  	  }
+
+
+		  } ////timestamp_disp
+
 
 	  }
-  }
   /* USER CODE END 3 */
 }
 
@@ -351,7 +378,7 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, LD2_Pin|ili_DC_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(SPI2_RES_GPIO_Port, SPI2_RES_Pin, GPIO_PIN_SET);
@@ -359,14 +386,17 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(SPI2_CS_GPIO_Port, SPI2_CS_Pin, GPIO_PIN_SET);
 
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(ili_RES_GPIO_Port, ili_RES_Pin, GPIO_PIN_RESET);
+
   /*Configure GPIO pin : B1_Pin */
   GPIO_InitStruct.Pin = B1_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : LD2_Pin SPI2_CS_Pin */
-  GPIO_InitStruct.Pin = LD2_Pin|SPI2_CS_Pin;
+  /*Configure GPIO pins : LD2_Pin SPI2_CS_Pin ili_DC_Pin */
+  GPIO_InitStruct.Pin = LD2_Pin|SPI2_CS_Pin|ili_DC_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -378,6 +408,13 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(SPI2_RES_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : ili_RES_Pin */
+  GPIO_InitStruct.Pin = ili_RES_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(ili_RES_GPIO_Port, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
   HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);

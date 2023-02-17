@@ -10,7 +10,7 @@
    - 2: 240x320 portrait (plug in botton)
    - 3: 320x240 landscape (plug in right)
 */
-#define  ILI9341_ORIENTATION      0
+#define  ILI9341_ORIENTATION      3
 
 /* Color mode
    - 0: RGB565 (R:bit15..11, G:bit10..5, B:bit4..0)
@@ -89,6 +89,8 @@ extern   LTDC_HandleTypeDef       hltdc;
 // Lcd Prototypo
 /*****************************************************************************/
 
+#include "Fonts/fonts.h"
+
 void     ili9341_Init(void);
 uint16_t ili9341_ReadID(void);
 void     ili9341_DisplayOn(void);
@@ -106,3 +108,8 @@ void     ili9341_DrawBitmap(uint16_t Xpos, uint16_t Ypos, uint8_t *pbmp);
 void     ili9341_DrawRGBImage(uint16_t Xpos, uint16_t Ypos, uint16_t Xsize, uint16_t Ysize, uint16_t *pData);
 void     ili9341_ReadRGBImage(uint16_t Xpos, uint16_t Ypos, uint16_t Xsize, uint16_t Ysize, uint16_t *pData);
 void     ili9341_Scroll(int16_t Scroll, uint16_t TopFix, uint16_t BottonFix);
+
+void 	 ili9341_WriteChar(uint16_t Xpo, uint16_t Ypo,const char *chr,sFONT fonto, uint16_t RGB_Coder, uint16_t RGB_bg);
+void 	 ili9341_WriteCharNoBG(uint16_t Xpo, uint16_t Ypo,const char *chr,sFONT fonto, uint16_t RGB_Coder);
+void 	 ili9341_WriteString(uint16_t Xpo, uint16_t Ypo,const char* strr,sFONT fonto, uint16_t RGB_Coder, uint16_t RGB_bg);
+void     ili9341_WriteStringNoBG(uint16_t Xpo, uint16_t Ypo,const char* strr,sFONT fonto, uint16_t RGB_Coder);

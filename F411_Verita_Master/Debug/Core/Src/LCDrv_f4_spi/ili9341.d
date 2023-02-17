@@ -29,7 +29,8 @@ Core/Src/LCDrv_f4_spi/ili9341.o: ../Core/Src/LCDrv_f4_spi/ili9341.c \
  ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_spi.h \
  ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_uart.h \
  ../Core/Src/LCDrv_f4_spi/lcd.h ../Core/Src/LCDrv_f4_spi/bmp.h \
- ../Core/Src/LCDrv_f4_spi/ili9341.h
+ ../Core/Src/LCDrv_f4_spi/ili9341.h \
+ ../Core/Src/LCDrv_f4_spi/Fonts/fonts.h
 ../Core/Inc/main.h:
 ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal.h:
 ../Core/Inc/stm32f4xx_hal_conf.h:
@@ -63,3 +64,4 @@ Core/Src/LCDrv_f4_spi/ili9341.o: ../Core/Src/LCDrv_f4_spi/ili9341.c \
 ../Core/Src/LCDrv_f4_spi/lcd.h:
 ../Core/Src/LCDrv_f4_spi/bmp.h:
 ../Core/Src/LCDrv_f4_spi/ili9341.h:
+../Core/Src/LCDrv_f4_spi/Fonts/fonts.h:

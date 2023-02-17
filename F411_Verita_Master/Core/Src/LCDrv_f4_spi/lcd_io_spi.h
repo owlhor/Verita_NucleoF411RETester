@@ -8,26 +8,26 @@
 /* SPI select (0, 1, 2, 3, 4, 5, 6)
    - 0: software SPI driver (the pins assign are full free)
    - 1..6: hardware SPI driver (the LCD_SCK, LCD_MOSI, LCD_MISO pins are lock to hardware) */
-#define LCD_SPI           2
+#define LCD_SPI           0
 
 /* SPI mode
    - 0: only TX (only to write on the display, LCD_MISO is not used)
    - 1: half duplex (LCD_MOSI is bidirectional pin, LCD_MISO is not used)
    - 2: full duplex (SPI TX: LCD_MOSI, SPI RX: LCD_MISO) */
-#define LCD_SPI_MODE      2
+#define LCD_SPI_MODE      0
 
 /* SPI write and read speed
    - software SPI: 0=none delay, 1=nop, 2=CLK pin double write, 3.. = LCD_IO_Delay(LCD_SPI_SPD - 3)
    - hardware SPI clock div fPCLK: 0=/2, 1=/4, 2=/8, 3=/16, 4=/32, 5=/64, 6=/128, 7=/256 */
-#define LCD_SPI_SPD_WRITE 0
-#define LCD_SPI_SPD_READ  2
+#define LCD_SPI_SPD_WRITE 2
+#define LCD_SPI_SPD_READ  4
 
 /* SPI pins alternative function assign (0..15), (only hardware SPI) */
 #define LCD_SPI_AFR       0
 
 /* Lcd control pins assign (A..K, 0..15)
    - if hardware SPI: SCK, MOSI, MISO pins assign is lock to hardware */
-#define LCD_RST           X, 0  /* If not used leave it that way */
+#define LCD_RST           B, 5  /* If not used leave it that way */
 #define LCD_RS            A, 10
 
 #define LCD_CS            A, 8
@@ -50,7 +50,7 @@
    - 0..7: DMA channel (DMA request mapping)
    - 0..7: Stream (DMA request mapping)
    - 1..3: DMA priority (0=low..3=very high) */
-#define LCD_DMA_TX        1, 1, 2, 1
+#define LCD_DMA_TX        0, 0, 0, 0
 #define LCD_DMA_RX        0, 0, 0, 0
 
 /* DMA interrupt priority (see NVIC_SetPriority function, default value: 15) */
