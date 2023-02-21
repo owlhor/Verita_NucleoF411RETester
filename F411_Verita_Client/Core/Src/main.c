@@ -23,6 +23,8 @@
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
 #include <string.h>
+
+#include "gpio_testscript.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -32,6 +34,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+//#define TIMx_PWM_En
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -41,6 +44,8 @@
 
 /* Private variables ---------------------------------------------------------*/
 ADC_HandleTypeDef hadc1;
+
+TIM_HandleTypeDef htim3;
 
 UART_HandleTypeDef huart2;
 
@@ -53,7 +58,24 @@ typedef struct{
 ADCStructure ADCChannell[1];
 
 uint16_t cputmpraw = 0;
+float cputempCC = 0;
 
+uint8_t bluecounter = 0;
+uint32_t timestamp_one = 0;
+
+
+//// --------- GPIO Read Buffer --------
+uint32_t temp_mode, temp_pupdr;
+uint16_t gpio_C_rd[4] = {0};
+uint32_t gpio_xpupd_rd[4] = {0};
+uint8_t flag_gpioselftest = 0;
+
+//// lists All port - pin to inspect first // avoid special pin like osilators / UART
+//// GPIO_PIN_x is in bit position format (0 2 4 8 16 ...) which loss if stored in that form and log2() to calculate back
+uint16_t List_GPIOB[] = {0,1,2,  4,5,6,7,8,9,10,   12,13,14,15,  20}; // 11 is Vcap
+uint16_t List_GPIOC[] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,        20};
+
+//// ---- -----------
 char uartTXBf[100] = {0};
 /* USER CODE END PV */
 
@@ -62,11 +84,14 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_ADC1_Init(void);
+static void MX_TIM3_Init(void);
 /* USER CODE BEGIN PFP */
 void CPUTemprdINIT();
 uint16_t CPUTempread();
 float ADCTVolta(uint16_t btt);
 float TempEquat(float Vs);
+
+void GPIO_Selftest_step_1_single();
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -104,33 +129,59 @@ int main(void)
   MX_GPIO_Init();
   MX_USART2_UART_Init();
   MX_ADC1_Init();
+  MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
 
   CPUTemprdINIT();
 
   char temp[]="----------------- F411_Verita_Client --------------------\r\n";
   HAL_UART_Transmit(&huart2, (uint8_t*)temp, strlen(temp),10);
+
+   //GPIOB->MODER = 0x100680;
+
+//   uint32_t tyyy = GPIOB->MODER;
+//   tyyy &= ~( 0b11 << (5 * 2U));
+//   tyyy &= ~( 0b11 << (10 * 2U));
+//   tyyy |= ( GPIO_MODE_OUTPUT_PP << (5 * 2U));
+//   tyyy |= ( GPIO_MODE_OUTPUT_PP << (10 * 2U));
+//   GPIOB->MODER = tyyy;
+
+#ifdef TIMx_PWM_En
+  HAL_TIM_Base_Start(&htim3);
+  HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
+#endif
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  static uint32_t timestamp_1 =0;
-	  float cputempCC = 0;
-	  if(HAL_GetTick() >= timestamp_1){
-		  timestamp_1 += 1000;
+	  if(HAL_GetTick() >= timestamp_one){
+		  timestamp_one += 400;
+
+		  HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
 
 		  cputmpraw = CPUTempread();
 
 		  cputempCC = TempEquat(ADCTVolta(cputmpraw));
 
-		  sprintf(uartTXBf, "cpuraw = %d  =>  %.3f  %.3f\r\n ",
+		  sprintf(uartTXBf, "cpuraw = %d  => %.3f C\r\n ",
 				  cputmpraw,
-				  ADCTVolta(cputmpraw),
 				  cputempCC);
 		  HAL_UART_Transmit(&huart2, (uint8_t*)uartTXBf, strlen(uartTXBf),10);
 
+		  HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_5);
+		  gpio_C_rd[3] = HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_10);
+		  //HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_10);
+
+	  }
+
+	  if(flag_gpioselftest == 1){
+		  //GPIO_Selftest_step_1_single();
+		  gpio_xpupd_rd[2] = gpio_selftest_input_pupdr_1(GPIOC, List_GPIOC);
+		  gpio_xpupd_rd[1] = gpio_selftest_input_pupdr_1(GPIOB, List_GPIOB);
+		  flag_gpioselftest = 0;
 	  }
     /* USER CODE END WHILE */
 
@@ -161,9 +212,9 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
-  RCC_OscInitStruct.PLL.PLLM = 16;
-  RCC_OscInitStruct.PLL.PLLN = 336;
-  RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV4;
+  RCC_OscInitStruct.PLL.PLLM = 8;
+  RCC_OscInitStruct.PLL.PLLN = 100;
+  RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
   RCC_OscInitStruct.PLL.PLLQ = 4;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
@@ -179,7 +230,7 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_3) != HAL_OK)
   {
     Error_Handler();
   }
@@ -234,6 +285,65 @@ static void MX_ADC1_Init(void)
   /* USER CODE BEGIN ADC1_Init 2 */
 
   /* USER CODE END ADC1_Init 2 */
+
+}
+
+/**
+  * @brief TIM3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM3_Init(void)
+{
+
+  /* USER CODE BEGIN TIM3_Init 0 */
+
+  /* USER CODE END TIM3_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0};
+
+  /* USER CODE BEGIN TIM3_Init 1 */
+
+  /* USER CODE END TIM3_Init 1 */
+  htim3.Instance = TIM3;
+  htim3.Init.Prescaler = 9999;
+  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim3.Init.Period = 9999;
+  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
+  if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim3, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_PWM_Init(&htim3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  sConfigOC.Pulse = 5000;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM3_Init 2 */
+
+  /* USER CODE END TIM3_Init 2 */
+  HAL_TIM_MspPostInit(&htim3);
 
 }
 
@@ -301,6 +411,16 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(LD2_GPIO_Port, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : PB10 */
+  GPIO_InitStruct.Pin = GPIO_PIN_10;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
+
 }
 
 /* USER CODE BEGIN 4 */
@@ -336,6 +456,96 @@ float ADCTVolta(uint16_t btt){
 float TempEquat(float Vs){
 	//Vs = V tmp read , V25= 0.76V, Avg_slope = 2.5 mV
 	return ((Vs - 0.76)/(0.0025)) + 25.0; //2.5*0.001
+}
+
+void GPIO_Selftest_step_1_single(){
+	/* 1 - Input pullup read
+	 * 2 - Input pulldown read
+	 *
+	 * 3 - Output pushpull
+	 * 4 - Output opendrain
+	 *
+	 * 0xA800 0000 | Reset GPIOA_MODER
+	 * 0x6400 0000 | Reset GPIOA_PUPDR
+	 * */
+
+
+	//uint32_t temp_mode, temp_pupdr; //
+	//uint32_t posit = 0x00000001;
+
+	//GPIOC->MODER = 0x00000000U; //
+	//GPIOC->PUPDR = 0x05555555U; //  All pullup
+	//GPIOC->PUPDR = 0x0AAAAAAAU; //  All pulldown
+
+	temp_mode = GPIOC->MODER;
+	temp_pupdr = GPIOC->PUPDR;
+
+	uint8_t sizearr = sizeof(List_GPIOC); // / sizeof(List_GPIOC[0])
+
+
+	//// ------------------ Input PULLUP ------------------------------
+	for(register int i = 0;i < sizearr; i++){
+		temp_mode &= ~( 0b11 << (List_GPIOC[i] * 2U)); // clear only 2 register want to reconfig by shift 11 to prefer position then & it's invert to the previous read
+		temp_mode |= ( GPIO_MODE_INPUT << (List_GPIOC[i] * 2U));
+	}
+	GPIOC->MODER = temp_mode;
+
+
+	for(register int i = 0;i < sizearr; i++){
+		temp_pupdr &= ~( 0b11 << (List_GPIOC[i] * 2U)); // clear only 2 register want to reconfig by shift 11 to prefer position then & it's invert to the previous read
+		temp_pupdr |= ( GPIO_PULLUP << (List_GPIOC[i] * 2U));
+	}
+	GPIOC->PUPDR = temp_pupdr;
+	HAL_Delay(5);
+	gpio_C_rd[0] = GPIOC->IDR;
+
+	//// ------------------ Input PULLDOWN ------------------------------
+	for(register int i = 0;i < sizearr; i++){
+		temp_pupdr &= ~( 0b11 << (List_GPIOC[i] * 2U)); // clear only 2 register want to reconfig by shift 11 to prefer position then & it's invert to the previous read
+		temp_pupdr |= ( GPIO_PULLDOWN << (List_GPIOC[i] * 2U));
+	}
+	GPIOC->PUPDR = temp_pupdr;
+	HAL_Delay(5);
+	gpio_C_rd[1] = GPIOC->IDR;
+
+
+	////temp = GPIOx->PUPDR;
+	////temp &= ~(GPIO_PUPDR_PUPDR0 << (position * 2U));
+	////temp |= ((GPIO_Init->Pull) << (position * 2U));
+	////GPIOx->PUPDR = temp;
+}
+
+//// ----------------GPIO_EXTI_Callback-----------------------------------------
+
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
+	if(GPIO_Pin == GPIO_PIN_13){
+		bluecounter++;
+		bluecounter%=4;
+
+		flag_gpioselftest = 1;
+
+
+#ifdef TIMx_PWM_En
+		if(bluecounter == 0){
+			HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
+			__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 9000);
+		}
+		else if(bluecounter == 1){
+
+			__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 6000);
+		}
+		else if(bluecounter == 2){
+			__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 3000);
+		}
+		else if(bluecounter == 3){
+			HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_1);
+		}else{
+			__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 3000);
+		}
+#endif
+
+
+		}
 }
 
 /* USER CODE END 4 */

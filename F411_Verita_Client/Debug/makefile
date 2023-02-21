@@ -52,6 +52,9 @@ default.size.stdout \
 OBJDUMP_LIST += \
 F411_Verita_Client.list \
 
+OBJCOPY_BIN += \
+F411_Verita_Client.bin \
+
 
 # All Target
 all: main-build
@@ -75,12 +78,17 @@ F411_Verita_Client.list: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DE
 	@echo 'Finished building: $@'
 	@echo ' '
 
+F411_Verita_Client.bin: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-objcopy  -O binary $(EXECUTABLES) "F411_Verita_Client.bin"
+	@echo 'Finished building: $@'
+	@echo ' '
+
 # Other Targets
 clean:
-	-$(RM) F411_Verita_Client.elf F411_Verita_Client.list F411_Verita_Client.map default.size.stdout
+	-$(RM) F411_Verita_Client.bin F411_Verita_Client.elf F411_Verita_Client.list F411_Verita_Client.map default.size.stdout
 	-@echo ' '
 
-secondary-outputs: $(SIZE_OUTPUT) $(OBJDUMP_LIST)
+secondary-outputs: $(SIZE_OUTPUT) $(OBJDUMP_LIST) $(OBJCOPY_BIN)
 
 fail-specified-linker-script-missing:
 	@echo 'Error: Cannot find the specified linker script. Check the linker settings in the build configuration.'
