@@ -24,7 +24,6 @@ SUBDIRS := \
 Core/Src \
 Core/Src/LCDrv_f4_spi/Fonts \
 Core/Src/LCDrv_f4_spi \
-Core/Src/ili9341 \
 Core/Startup \
 Drivers/STM32F4xx_HAL_Driver/Src \
 

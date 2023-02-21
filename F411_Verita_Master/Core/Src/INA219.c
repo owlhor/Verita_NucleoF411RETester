@@ -7,6 +7,7 @@
 
 #include "INA219.h"
 
+
 union{
 	uint32_t D32;
 	uint16_t D16[2];
@@ -58,7 +59,7 @@ void INA219_INIT_Calibrate(I2C_HandleTypeDef *hi2c,uint8_t dv_addr){
 	////// -------------------- Configuration -------------------------------------
 	configura.INA219CF.reset = 0;
 	configura.INA219CF.BRNG = BRNG_FSR_32V;
-	configura.INA219CF.PGA = PGA_GainD8_320mv;
+	configura.INA219CF.PGA = PGA_GainD4_160mv;
 	configura.INA219CF.BADC = ADCI_12bit_532uS;
 	configura.INA219CF.SADC = ADCI_12bit_532uS;
 	configura.INA219CF.Mode = INAM_ShuntBusV_Continuous;
@@ -75,6 +76,9 @@ void INA219_INIT_Calibrate(I2C_HandleTypeDef *hi2c,uint8_t dv_addr){
 	// float current_LSB = INA219_MAX_Expect_Current / 32768.0; // 2^15
 	//calibrator.U16 = (int16_t)(trunc( 0.04096 / (current_LSB * INA219_R_SHUNT_Val))) << 1;
 	calibrator.U16 = trunc( 0.04096 / (current_LSB * INA219_R_SHUNT_Val));
+#ifdef calibrate_EQ6
+	calibrator.U16 = trunc((calibrator.U16 * MeaShuntCurrent_ExtMeter) / INA219_Current_Raw);
+#endif
 	uint8_t calibrator_si2c[2] = {calibrator.U8[1], calibrator.U8[0]}; //// switch byte to send high order first in I2C
 	////  ex calibrator(I = 3A, 0.1Rshunt) = 4473 = 0x1179
 
@@ -116,6 +120,9 @@ void INA219_Calibrate(I2C_HandleTypeDef *hi2c,uint8_t dv_addr){
 
 
 	calibrator.U16 = trunc( 0.04096 / (current_LSB * INA219_R_SHUNT_Val));
+#ifdef calibrate_EQ6
+	calibrator.U16 = trunc((calibrator.U16 * MeaShuntCurrent_ExtMeter) / INA219_Current_Raw);
+#endif
 	uint8_t calibrator_si2c[2] = {calibrator.U8[1], calibrator.U8[0]}; //// switch byte to send high order first in I2C
 	HAL_I2C_Mem_Write(hi2c, dv_addr, INA219_RG_Calibra, I2C_MEMADD_SIZE_8BIT, &calibrator_si2c[0], 2, 10);
 
@@ -177,7 +184,7 @@ float INA219Read_ShuntV(I2C_HandleTypeDef *hi2c,uint8_t dv_addr){
 //    }
 }
 
-uint16_t INA219Read_Power(I2C_HandleTypeDef *hi2c,uint8_t dv_addr){
+float INA219Read_Power(I2C_HandleTypeDef *hi2c,uint8_t dv_addr){
 	/* @brief : Power read
 	 * @param : hi2c - HAL_I2C used to read
 	 * @param : dv_addr - address of INA219 device in the busline
@@ -187,5 +194,5 @@ uint16_t INA219Read_Power(I2C_HandleTypeDef *hi2c,uint8_t dv_addr){
 	INACBffr.D32 = 0; //// buffer clear
 	HAL_I2C_Mem_Read(hi2c, dv_addr, INA219_RG_PoWer, I2C_MEMADD_SIZE_8BIT, &INACBffr.D8[1], 2, 10);
 	////  * 20, power_LSB = 20 x current_LSB & x 1000 make unit in mW
-	return (uint16_t)((INACBffr.D16[1] | INACBffr.D16[0]) * (20000 * current_LSB));
+	return ((INACBffr.D16[1] | INACBffr.D16[0]) * (20000.0 * current_LSB));
 }

@@ -11,7 +11,6 @@ RM := rm -rf
 -include sources.mk
 -include Drivers/STM32F4xx_HAL_Driver/Src/subdir.mk
 -include Core/Startup/subdir.mk
--include Core/Src/ili9341/subdir.mk
 -include Core/Src/LCDrv_f4_spi/Fonts/subdir.mk
 -include Core/Src/LCDrv_f4_spi/subdir.mk
 -include Core/Src/subdir.mk

@@ -11,16 +11,31 @@
 #include "stm32f4xx_hal.h"
 #include <math.h>
 
+
+#define INA219_R_SHUNT_Val  0.1 // ohm
+#define INA219_MAX_Expect_Current 10 // Ampere
+
+/* Define calibrate_EQ6 to enable Equation 6 Calibrate & Scaling
+ * Do the experiment with some test circuit using
+ * the external Ampmeter to get these parameter
+ *
+ * MeaShuntCurrent_ExtMeter <- Parameter measures from the meter
+ * INA219_Current_Raw 		<- Raw current read from INA219_RG_Current
+ * 								when there're no any calibrate applied
+*/
+#define calibrate_EQ6
+#define MeaShuntCurrent_ExtMeter 	0.8  // Ampere
+#define INA219_Current_Raw 			2.7  // Ampere
+
+#define INA219_Config_Reset 0x399F
+
+//////// Device Address ---------------------------------------------
 #define INA219_ADDR_1 0b10000000 // 1000000
 #define INA219_ADDR_2 0b10000010 // 1000001
 #define INA219_ADDR_3 0b10000100 // 1000010
 #define INA219_ADDR_4 0b10000110 // 1000011
 
-#define INA219_R_SHUNT_Val  0.1 // ohm
-#define INA219_MAX_Expect_Current 2 // Ampere
-
-#define INA219_Config_Reset 0x399F
-
+//// Register Address ---------------------------------------------
 #define INA219_RG_Config	0x00
 #define INA219_RG_ShuntV    0x01
 #define INA219_RG_BusV 		0x02
@@ -74,8 +89,8 @@ typedef struct {
 	uint16_t Config ;
 
 	float SHUNT_V;
-	uint16_t CURRENT;
-	uint16_t POWER;
+	int16_t CURRENT;
+	float POWER;
 	uint16_t Bus_V;
 
 	uint16_t Calibra; // For read back
@@ -104,7 +119,7 @@ typedef union _INA219_Conf_Strc{
 uint16_t INA219Read_cx(I2C_HandleTypeDef *hi2c,uint8_t dv_addr, uint8_t ina_rg);
 uint16_t INA219Read_BusV(I2C_HandleTypeDef *hi2c,uint8_t dv_addr);
 uint16_t INA219Read_Current(I2C_HandleTypeDef *hi2c,uint8_t dv_addr);
-uint16_t INA219Read_Power(I2C_HandleTypeDef *hi2c,uint8_t dv_addr);
+float INA219Read_Power(I2C_HandleTypeDef *hi2c,uint8_t dv_addr);
 float INA219Read_ShuntV(I2C_HandleTypeDef *hi2c,uint8_t dv_addr);
 
 void INA219_INIT_Calibrate(I2C_HandleTypeDef *hi2c,uint8_t dv_addr);

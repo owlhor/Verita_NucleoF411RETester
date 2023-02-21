@@ -40,7 +40,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-//#define INA219_Wrk
+#define INA219_Wrk
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -56,7 +56,8 @@ SPI_HandleTypeDef hspi2;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-char texx[100] = {0};
+char TextDispBuffer[100] = {0};
+char TextUARTBuffer[100] = {0};
 
 union {
 	uint8_t U8[12];
@@ -77,7 +78,7 @@ static void MX_USART2_UART_Init(void);
 static void MX_SPI2_Init(void);
 static void MX_I2C1_Init(void);
 /* USER CODE BEGIN PFP */
-
+void running_box();
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -155,16 +156,16 @@ int main(void)
 		  HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
 
 
-		  ili9341_FillRect(50, 20, 50, 50, cl_RED);
-		  ili9341_FillRect(100, 20, 50, 50, cl_GREEN);
-		  ili9341_FillRect(150, 20, 50, 50, cl_BLUE);
+		  ili9341_FillRect(50, 20, 50, 20, cl_RED);
+		  ili9341_FillRect(100, 20, 50, 20, cl_GREEN);
+		  ili9341_FillRect(150, 20, 50, 20, cl_BLUE);
 
-		  //ili9341_DrawRGBImage(60, 120, 128, 128, (uint16_t*)image_data_ImageoftestN2);
+		  //ili9341_DrawRGBImage(60, 80, 128, 128, (uint16_t*)image_data_ImageoftestN2);
 
-		  ili9341_WriteString(50, 70, "Helios Terra Renai Kaliber Barx Maxon 129035"
-					 " __ --== + &&6.. [ ggg ]??? Rhivalia DIAR Barvarrian"
-					  "vicar nexus iICCTVS "
-				  , Font12, cl_YELLOW, cl_BLACK);
+//		  ili9341_WriteString(50, 40, "Helios Terra Renai Kaliber Barx Maxon 129035"
+//					 " __ --== + &&6.. [ ggg ]??? Rhivalia DIAR Barvarrian"
+//					  "vicar nexus iICCTVS "
+//				  , Font12, cl_YELLOW, cl_BLACK);
 
 
 #ifdef INA219_Wrk
@@ -174,7 +175,6 @@ int main(void)
 		  //INATT.U16[1] = INA219Read_cx(&hi2c1, INA219_ADDR_1, INA219_RG_Config);
 		  //INATT.U16[2] = INA219Read_cx(&hi2c1, INA219_ADDR_1, INA219_RG_Current);
 
-
 		  inata.Bus_V   = INA219Read_BusV(&hi2c1, INA219_ADDR_1);
 		  inata.CURRENT = INA219Read_Current(&hi2c1, INA219_ADDR_1);
 		  inata.POWER   = INA219Read_Power(&hi2c1, INA219_ADDR_1);
@@ -182,31 +182,28 @@ int main(void)
 
 		  inata.Calibra =  INA219Read_cx(&hi2c1, INA219_ADDR_1, INA219_RG_Calibra);
 		  inata.Config = INA219Read_cx(&hi2c1, INA219_ADDR_1, INA219_RG_Config);
+
+		  sprintf(TextDispBuffer,"calibrator: %4X", inata.Calibra);
+		  ili9341_WriteString(20, 50, TextDispBuffer, Font16, cl_GREENYELLOW, cl_BLACK);
+
+		  sprintf(TextDispBuffer,"V mV: %d    ", inata.Bus_V);
+		  ili9341_WriteString(20, 70, TextDispBuffer, Font20, cl_CYAN, cl_BLACK);
+
+		  sprintf(TextDispBuffer,"I mA: %d    ", inata.CURRENT);
+		  ili9341_WriteString(20, 95, TextDispBuffer, Font20, cl_CYAN, cl_BLACK);
+
+		  sprintf(TextDispBuffer,"P mW: %.4f  ", inata.POWER);
+		  ili9341_WriteString(20, 120, TextDispBuffer, Font20, cl_CYAN, cl_BLACK);
+
 #endif
 
 		  } // timestamp_one
 
+	  if (HAL_GetTick() >= timestamp_disp){
+	  		timestamp_disp += 10;
+	  		running_box();
 
-		  if (HAL_GetTick() >= timestamp_disp){
-			  timestamp_disp += 10;
-
-		   //// Running box ------
-		  int ratte = 1;
-		  int sizo = 30;
-		  int offs = 140;
-		  static uint16_t xsh = 0;
-		  ili9341_FillRect(xsh, offs, ratte ,sizo, cl_MAROON);
-		  xsh += ratte;
-		  ili9341_FillRect(xsh, offs, sizo, sizo, cl_CYAN); //// box
-		  if(xsh >= 400){ // clear
-			  ili9341_FillRect(xsh, offs, sizo, sizo, cl_MAROON);
-			  xsh = 0;
-		  	  	  }
-
-
-		  } ////timestamp_disp
-
-
+	  }// timestamp_dis
 	  }
   /* USER CODE END 3 */
 }
@@ -428,6 +425,22 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 	if(GPIO_Pin == GPIO_PIN_13){
 		INA219_BitReset(&hi2c1, INA219_ADDR_1);
 		}
+}
+
+void running_box(){
+   //// Running box ------
+  int ratte = 1;
+  int sizo = 30;
+  int offs = 180;
+  static uint16_t xsh = 0;
+  ili9341_FillRect(xsh, offs, ratte ,sizo, cl_MAROON);
+  xsh += ratte;
+  ili9341_FillRect(xsh, offs, sizo, sizo, cl_CYAN); //// box
+  if(xsh >= 400){ // clear
+	  ili9341_FillRect(xsh, offs, sizo, sizo, cl_MAROON);
+	  xsh = 0;
+		  }
+
 }
 
 /* USER CODE END 4 */
