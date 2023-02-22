@@ -48,6 +48,7 @@ ADC_HandleTypeDef hadc1;
 TIM_HandleTypeDef htim3;
 
 UART_HandleTypeDef huart2;
+UART_HandleTypeDef huart6;
 
 /* USER CODE BEGIN PV */
 typedef struct{
@@ -72,11 +73,13 @@ uint8_t flag_gpioselftest = 0;
 
 //// lists All port - pin to inspect first // avoid special pin like osilators / UART
 //// GPIO_PIN_x is in bit position format (0 2 4 8 16 ...) which loss if stored in that form and log2() to calculate back
+uint16_t List_GPIOA[] = {0,1,    4,5,6,7,8,9,10,            15,  20}; // 2,3 STLK RXTX / 11 12 UART MTxCL / 13 14 TMS TCK
 uint16_t List_GPIOB[] = {0,1,2,  4,5,6,7,8,9,10,   12,13,14,15,  20}; // 11 is Vcap
 uint16_t List_GPIOC[] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,        20};
 
-//// ---- -----------
+//// ----------------------  UART Buffer  -------------------
 char uartTXBf[100] = {0};
+char TxBufferMtCl[50] = {0}; // Sent some results to master
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -85,6 +88,7 @@ static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_TIM3_Init(void);
+static void MX_USART6_UART_Init(void);
 /* USER CODE BEGIN PFP */
 void CPUTemprdINIT();
 uint16_t CPUTempread();
@@ -92,6 +96,7 @@ float ADCTVolta(uint16_t btt);
 float TempEquat(float Vs);
 
 void GPIO_Selftest_step_1_single();
+void Tx_UART_Verita_Packet(UART_HandleTypeDef *huart, uint8_t regis,uint8_t *pdata, uint8_t size);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -130,6 +135,7 @@ int main(void)
   MX_USART2_UART_Init();
   MX_ADC1_Init();
   MX_TIM3_Init();
+  MX_USART6_UART_Init();
   /* USER CODE BEGIN 2 */
 
   CPUTemprdINIT();
@@ -147,7 +153,7 @@ int main(void)
 //   GPIOB->MODER = tyyy;
 
 #ifdef TIMx_PWM_En
-  HAL_TIM_Base_Start(&htim3);
+  HAL_TIM_Base_St art(&htim3);
   HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
 #endif
 
@@ -157,6 +163,8 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+
+
 	  if(HAL_GetTick() >= timestamp_one){
 		  timestamp_one += 400;
 
@@ -171,17 +179,25 @@ int main(void)
 				  cputempCC);
 		  HAL_UART_Transmit(&huart2, (uint8_t*)uartTXBf, strlen(uartTXBf),10);
 
-		  HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_5);
-		  gpio_C_rd[3] = HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_10);
+//		  HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_5);
+//		  gpio_C_rd[3] = HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_10);
 		  //HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_10);
 
 	  }
 
 	  if(flag_gpioselftest == 1){
 		  //GPIO_Selftest_step_1_single();
-		  gpio_xpupd_rd[2] = gpio_selftest_input_pupdr_1(GPIOC, List_GPIOC);
-		  gpio_xpupd_rd[1] = gpio_selftest_input_pupdr_1(GPIOB, List_GPIOB);
+
+		  //gpio_xpupd_rd[2] = gpio_selftest_input_pupdr_1(GPIOC, List_GPIOC);
+		  //gpio_xpupd_rd[1] = gpio_selftest_input_pupdr_1(GPIOB, List_GPIOB);
+
+		  static uint8_t gg = 0x66;
+		  static uint8_t rg = 0x02;
+		  uint8_t ggg[5] = {0x00, 0x11, 0x33, gg, 0x99};
+		  Tx_UART_Verita_Packet(&huart6, rg, ggg, sizeof(ggg));
+
 		  flag_gpioselftest = 0;
+		  gg++; rg++;
 	  }
     /* USER CODE END WHILE */
 
@@ -381,6 +397,39 @@ static void MX_USART2_UART_Init(void)
 }
 
 /**
+  * @brief USART6 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART6_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART6_Init 0 */
+
+  /* USER CODE END USART6_Init 0 */
+
+  /* USER CODE BEGIN USART6_Init 1 */
+
+  /* USER CODE END USART6_Init 1 */
+  huart6.Instance = USART6;
+  huart6.Init.BaudRate = 115200;
+  huart6.Init.WordLength = UART_WORDLENGTH_8B;
+  huart6.Init.StopBits = UART_STOPBITS_1;
+  huart6.Init.Parity = UART_PARITY_NONE;
+  huart6.Init.Mode = UART_MODE_TX_RX;
+  huart6.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart6.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart6) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART6_Init 2 */
+
+  /* USER CODE END USART6_Init 2 */
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -515,6 +564,39 @@ void GPIO_Selftest_step_1_single(){
 	////GPIOx->PUPDR = temp;
 }
 
+
+void Tx_UART_Verita_Packet(UART_HandleTypeDef *huart, uint8_t regis,uint8_t *pdata, uint8_t size){
+	/* @param huart - Pointer to a UART_HandleTypeDef structure that contains
+     *                the configuration information for the specified UART module.
+	 * @param regis - destination register need packet be inserted
+	 * @param pdata - Pointer to data buffer (u8 or u16 data elements).
+	 * @param size  - Amount of data elements (u8 or u16) to be received.
+	 *
+	 * */
+
+	 /* ----------------------- UART Verita Frame -------------------------
+	  *  V R T + Addr of regis sent data + Data + chksum
+	  *  0x56 0x52 0x54 0xregis ...
+ 	  */
+
+	uint8_t posit = 4; // start new position
+	uint8_t pack[16] = {0x56, 0x52, 0x54, regis};
+	uint8_t chksum = 0;
+
+	//// add data to packet
+	for(register int j = 4; j < 4 + size ;j++){
+			pack[j] = pdata[j-4];
+			posit++;
+		}
+	//// Checksum generate , +4 means +3 start pack & +1 regis
+	for(register int j = 3; j < size + 4;j++){
+		chksum += pack[j];
+	}
+	pack[posit] = ~chksum;
+
+
+	HAL_UART_Transmit(huart, (uint8_t*)pack, posit+1, 60);
+}
 //// ----------------GPIO_EXTI_Callback-----------------------------------------
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){

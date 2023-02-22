@@ -31,6 +31,7 @@
 #include "testimg.h"
 
 #include "INA219.h"
+#include "Verita_PTC.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -54,11 +55,32 @@ I2C_HandleTypeDef hi2c1;
 SPI_HandleTypeDef hspi2;
 
 UART_HandleTypeDef huart2;
+UART_HandleTypeDef huart6;
+DMA_HandleTypeDef hdma_usart6_rx;
 
 /* USER CODE BEGIN PV */
-char TextDispBuffer[100] = {0};
-char TextUARTBuffer[100] = {0};
+//// ___________________________________________________________________
+//// --------------------UART Buffer -------------------
+char TextDispBuffer[100] = {0}; // Display Text
+char TextUARTBuffer[100] = {0}; // UART Console Text
+uint8_t RxBufferMtCl[10] = {0}; // Recieved packet buffer
 
+//// ---------- Verita Register -------------------------
+
+//typedef enum{
+//	VRT_ERROR  = 0x90U,
+//	VRT_OK     = 0x91U,
+//	VRT_Busy   = 0x92U,
+//	VRT_Regain = 0x93U,
+//	VRT_Next   = 0x94U,
+//} VRTPTC_StatusTypedef;
+
+VRTPTC_StatusTypedef engst;
+//static enum {init, unpack, decode}verita_engine;
+uint8_t flag_vrt_en = 0;
+uint32_t verita_regis[16] = {0};
+
+//// --------- INA219 ------------------------------------
 union {
 	uint8_t U8[12];
 	uint16_t U16[6];
@@ -67,18 +89,23 @@ union {
 INA219_Read_Set inata;
 INA219_Conf_Strc cofgra;
 
+//// -------------- Timestamp ---------------------------
 uint32_t timestamp_one = 0;
 uint32_t timestamp_disp = 0;
+//// ________________________________________________________________
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_SPI2_Init(void);
 static void MX_I2C1_Init(void);
+static void MX_USART6_UART_Init(void);
 /* USER CODE BEGIN PFP */
 void running_box();
+//VRTPTC_StatusTypedef Rx_Verita_engine(uint8_t *Rxbffr, uint32_t *regisk);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -114,9 +141,11 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_USART2_UART_Init();
   MX_SPI2_Init();
   MX_I2C1_Init();
+  MX_USART6_UART_Init();
   /* USER CODE BEGIN 2 */
 
   ili9341_Init();
@@ -151,6 +180,11 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+	  ////  ------------- UART Recieve --------------------------
+	  HAL_UART_Receive_DMA(&huart6, &RxBufferMtCl[0], 10);
+	  engst = Rx_Verita_engine(RxBufferMtCl, verita_regis);
+	  //// ----------------------------------------------------
+
 	  if (HAL_GetTick() >= timestamp_one){
 		  timestamp_one += 1000;
 		  HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
@@ -360,6 +394,55 @@ static void MX_USART2_UART_Init(void)
 }
 
 /**
+  * @brief USART6 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART6_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART6_Init 0 */
+
+  /* USER CODE END USART6_Init 0 */
+
+  /* USER CODE BEGIN USART6_Init 1 */
+
+  /* USER CODE END USART6_Init 1 */
+  huart6.Instance = USART6;
+  huart6.Init.BaudRate = 115200;
+  huart6.Init.WordLength = UART_WORDLENGTH_8B;
+  huart6.Init.StopBits = UART_STOPBITS_1;
+  huart6.Init.Parity = UART_PARITY_NONE;
+  huart6.Init.Mode = UART_MODE_TX_RX;
+  huart6.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart6.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart6) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART6_Init 2 */
+
+  /* USER CODE END USART6_Init 2 */
+
+}
+
+/**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA2_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA2_Stream1_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA2_Stream1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA2_Stream1_IRQn);
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -442,6 +525,96 @@ void running_box(){
 		  }
 
 }
+
+//VRTPTC_StatusTypedef Rx_Verita_engine(uint8_t *Rxbffr, uint32_t *regisk){
+//	/*
+//	 * @param Rxbffr - input uart buffer
+//	 * @param regisk - register need the result be stored
+//	 */
+//	static uint8_t logger[12] = {0}; /// log Rxbffr without head packet
+//	union{
+//		uint8_t  U8[4];
+//		uint32_t U32;
+//	}logu;
+//
+//	//uint8_t chksum = 0;
+//
+//	switch (verita_engine){
+//	default:
+//	case init:
+//
+//		if(flag_vrt_en || Rxbffr[0] == 0x56){ //
+//			verita_engine = unpack;
+//		}
+//		break;
+//
+//	case unpack:
+//
+//		if(Rxbffr[0] == 0x56 && Rxbffr[1] == 0x52 && Rxbffr[2] == 0x54){
+//
+//			//// log data first / prevent overwrite
+//			for(register int k = 0; k < 7; k++){
+//				logger[k] = Rxbffr[k+3];
+//			}
+//
+//			//// checksum here
+////			for(register int i = 0;i < 5; i++){
+////				chksum += logger[i];
+////			}
+////			if(~chksum == logger[6]){
+////				// pass
+////			}
+//
+//			//// mark that this data is already read
+//			Rxbffr[0] = 0xFF;
+//			verita_engine = decode;
+//		}
+//		else{
+//			verita_engine = init;
+//			flag_vrt_en = 0;
+//
+//			//// destroy data
+//			for(register int i = 0;i < sizeof(Rxbffr); i++){
+//				Rxbffr[i] = 0x00;
+//			}
+//		}
+//		break;
+//
+//	case decode:
+//		verita_engine = init;
+//
+//		//// DATA phase, insert 32bit data into register box
+//		if(logger[0] <= 0x20){
+//
+//			logu.U8[3] = logger[1];
+//			logu.U8[2] = logger[2];
+//			logu.U8[1] = logger[3];
+//			logu.U8[0] = logger[4];
+//
+//			regisk[logger[0]] = logu.U32;
+//			return VRT_OK;
+//		}
+//
+//		//// CMD phase, return recieved Command
+//		if(logger[0] >= 0x90){
+//			switch(logger[0]){
+//				default:
+//				case 0x90:
+//					return VRT_ERROR;
+//				case 0x91:
+//					return VRT_OK;
+//				case 0x92:
+//					return VRT_Busy;
+//				case 0x93:
+//					return VRT_Regain;
+//				case 0x94:
+//					return VRT_Next;
+//			}
+//		}
+//
+//		break;
+//	}
+//}
 
 /* USER CODE END 4 */
 
