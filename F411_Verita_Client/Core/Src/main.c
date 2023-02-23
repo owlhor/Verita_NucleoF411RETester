@@ -69,6 +69,8 @@ uint32_t timestamp_one = 0;
 uint32_t temp_mode, temp_pupdr;
 uint16_t gpio_C_rd[4] = {0};
 uint32_t gpio_xpupd_rd[4] = {0};
+uint32_t gpio_xopp[3] = {0};
+uint32_t gpio_xood[3] = {0};
 uint8_t flag_gpioselftest = 0;
 
 //// lists All port - pin to inspect first // avoid special pin like osilators / UART
@@ -143,6 +145,7 @@ int main(void)
   char temp[]="----------------- F411_Verita_Client --------------------\r\n";
   HAL_UART_Transmit(&huart2, (uint8_t*)temp, strlen(temp),10);
 
+
    //GPIOB->MODER = 0x100680;
 
 //   uint32_t tyyy = GPIOB->MODER;
@@ -188,9 +191,20 @@ int main(void)
 	  if(flag_gpioselftest == 1){
 		  //GPIO_Selftest_step_1_single();
 
-		  //gpio_xpupd_rd[2] = gpio_selftest_input_pupdr_1(GPIOC, List_GPIOC);
-		  //gpio_xpupd_rd[1] = gpio_selftest_input_pupdr_1(GPIOB, List_GPIOB);
+		  gpio_xpupd_rd[2] = gpio_selftest_input_pupdr_1(GPIOC, List_GPIOC);
+		  gpio_xpupd_rd[1] = gpio_selftest_input_pupdr_1(GPIOB, List_GPIOB);
 
+		  HAL_Delay(5);
+
+		  gpio_xopp[0] = gpio_selftest_output_pp_1(GPIOA, List_GPIOA);
+		  gpio_xopp[1] = gpio_selftest_output_pp_1(GPIOB, List_GPIOB);
+		  gpio_xopp[2] = gpio_selftest_output_pp_1(GPIOC, List_GPIOC);
+
+		  HAL_Delay(5);
+
+		  gpio_xood[1] = gpio_selftest_output_od_1(GPIOB, List_GPIOB);
+
+		  //// ---------- Verita send 1 set --------------------------
 		  static uint8_t gg = 0x66;
 		  static uint8_t rg = 0x02;
 		  uint8_t ggg[5] = {0x00, 0x11, 0x33, gg, 0x99};
