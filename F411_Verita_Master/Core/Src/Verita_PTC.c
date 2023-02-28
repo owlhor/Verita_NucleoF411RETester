@@ -2,6 +2,7 @@
  * Verita_PTC.c
  *
  *  Created on: Feb 22, 2023
+ *  Lastupdate: Feb 28, 2023
  *      Author: owl_hor
  */
 
@@ -41,12 +42,16 @@ VRTPTC_StatusTypedef Rx_Verita_engine(uint8_t *Rxbffr, uint32_t *regisk){
 			}
 
 			//// checksum here
-//			for(register int i = 0;i < 5; i++){
-//				chksum += logger[i];
-//			}
-//			if(~chksum == logger[6]){
-//				// pass
-//			}
+			for(register int i = 0;i < 5; i++){
+				chksum += logger[i];
+			}
+			if(~chksum == logger[6]){
+				// pass
+
+			}
+			else{
+				return VRT_DataLoss;
+			}
 
 			//// mark that this data is already read
 			Rxbffr[0] = 0xFF;
@@ -96,4 +101,5 @@ VRTPTC_StatusTypedef Rx_Verita_engine(uint8_t *Rxbffr, uint32_t *regisk){
 
 		break;
 	}
+	return VRT_ERROR;
 }

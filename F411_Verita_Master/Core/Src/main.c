@@ -31,6 +31,7 @@
 #include "testimg.h"
 
 #include "INA219.h"
+#include "MCP320X.h"
 #include "Verita_PTC.h"
 /* USER CODE END Includes */
 
@@ -53,6 +54,9 @@
 I2C_HandleTypeDef hi2c1;
 
 SPI_HandleTypeDef hspi2;
+SPI_HandleTypeDef hspi3;
+
+TIM_HandleTypeDef htim10;
 
 UART_HandleTypeDef huart2;
 UART_HandleTypeDef huart6;
@@ -67,16 +71,7 @@ uint8_t RxBufferMtCl[10] = {0}; // Recieved packet buffer
 
 //// ---------- Verita Register -------------------------
 
-//typedef enum{
-//	VRT_ERROR  = 0x90U,
-//	VRT_OK     = 0x91U,
-//	VRT_Busy   = 0x92U,
-//	VRT_Regain = 0x93U,
-//	VRT_Next   = 0x94U,
-//} VRTPTC_StatusTypedef;
-
 VRTPTC_StatusTypedef engst;
-//static enum {init, unpack, decode}verita_engine;
 uint8_t flag_vrt_en = 0;
 uint32_t verita_regis[16] = {0};
 
@@ -89,9 +84,25 @@ union {
 INA219_Read_Set inata;
 INA219_Conf_Strc cofgra;
 
+//// ---------------- MCP3208 ------------------------
+struct _mcp_read{
+	uint16_t raw[4];
+	float cv[4];
+}mcp_read;
 //// -------------- Timestamp ---------------------------
 uint32_t timestamp_one = 0;
-uint32_t timestamp_disp = 0;
+uint32_t timestamp_buzbtn = 0; // in while
+uint32_t timestamp_bz = 0;     // for buzzer function only
+
+uint32_t _millis = 0;
+//// --------------- Grandstate & flags & buttons------------------
+uint8_t flagc_bz = 0; // flag counter for buzzer
+uint8_t btn_read[4] = {0}; // use Btn 3 as last process val
+uint16_t btn_cnt = 0;
+
+uint16_t bzz_t_priod_up = 150;
+uint16_t bzz_t_priod_dn = 100;
+
 //// ________________________________________________________________
 /* USER CODE END PV */
 
@@ -103,8 +114,12 @@ static void MX_USART2_UART_Init(void);
 static void MX_SPI2_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_USART6_UART_Init(void);
+static void MX_SPI3_Init(void);
+static void MX_TIM10_Init(void);
 /* USER CODE BEGIN PFP */
 void running_box();
+void buzzer_scream_cnt();
+void Button_machine();
 //VRTPTC_StatusTypedef Rx_Verita_engine(uint8_t *Rxbffr, uint32_t *regisk);
 /* USER CODE END PFP */
 
@@ -146,7 +161,11 @@ int main(void)
   MX_SPI2_Init();
   MX_I2C1_Init();
   MX_USART6_UART_Init();
+  MX_SPI3_Init();
+  MX_TIM10_Init();
   /* USER CODE BEGIN 2 */
+
+  HAL_TIM_Base_Start_IT(&htim10);
 
   ili9341_Init();
   ili9341_DisplayOn();
@@ -171,6 +190,9 @@ int main(void)
   char temp[]="----------------- F411_Verita_Master --------------------\r\n";
   HAL_UART_Transmit(&huart2, (uint8_t*)temp, strlen(temp),10);
 
+  ili9341_FillRect(50, 20, 50, 20, cl_RED);
+  ili9341_FillRect(100, 20, 50, 20, cl_GREEN);
+  ili9341_FillRect(150, 20, 50, 20, cl_BLUE);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -180,6 +202,14 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+	  //// -------- buzzer & Button -----------------
+	  Button_machine();
+
+	  if (HAL_GetTick() >= timestamp_buzbtn){
+	 	  		timestamp_buzbtn += 10;
+	 	  		running_box();
+	 	  		buzzer_scream_cnt();
+	 	  	  }// timestamp_dis
 	  ////  ------------- UART Recieve --------------------------
 	  HAL_UART_Receive_DMA(&huart6, &RxBufferMtCl[0], 10);
 	  engst = Rx_Verita_engine(RxBufferMtCl, verita_regis);
@@ -189,22 +219,8 @@ int main(void)
 		  timestamp_one += 1000;
 		  HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
 
-
-		  ili9341_FillRect(50, 20, 50, 20, cl_RED);
-		  ili9341_FillRect(100, 20, 50, 20, cl_GREEN);
-		  ili9341_FillRect(150, 20, 50, 20, cl_BLUE);
-
 		  //ili9341_DrawRGBImage(60, 80, 128, 128, (uint16_t*)image_data_ImageoftestN2);
-
-//		  ili9341_WriteString(50, 40, "Helios Terra Renai Kaliber Barx Maxon 129035"
-//					 " __ --== + &&6.. [ ggg ]??? Rhivalia DIAR Barvarrian"
-//					  "vicar nexus iICCTVS "
-//				  , Font12, cl_YELLOW, cl_BLACK);
-
-
 #ifdef INA219_Wrk
-//		  HAL_I2C_Mem_Read(&hi2c1, INA219_ADDR_1, 0x00, I2C_MEMADD_SIZE_8BIT, &INATT.U8[0], 2, 10);
-//		  INATT.U16[3] = (INATT.U8[0] << 8) | INATT.U8[1];
 
 		  //INATT.U16[1] = INA219Read_cx(&hi2c1, INA219_ADDR_1, INA219_RG_Config);
 		  //INATT.U16[2] = INA219Read_cx(&hi2c1, INA219_ADDR_1, INA219_RG_Current);
@@ -217,27 +233,30 @@ int main(void)
 		  inata.Calibra =  INA219Read_cx(&hi2c1, INA219_ADDR_1, INA219_RG_Calibra);
 		  inata.Config = INA219Read_cx(&hi2c1, INA219_ADDR_1, INA219_RG_Config);
 
-		  sprintf(TextDispBuffer,"calibrator: %4X", inata.Calibra);
-		  ili9341_WriteString(20, 50, TextDispBuffer, Font16, cl_GREENYELLOW, cl_BLACK);
+		  sprintf(TextDispBuffer,"calibrator:%4X", inata.Calibra);
+		  ili9341_WriteString(20, 50, TextDispBuffer, Font12, cl_GREENYELLOW, cl_BLACK);
 
 		  sprintf(TextDispBuffer,"V mV: %d    ", inata.Bus_V);
-		  ili9341_WriteString(20, 70, TextDispBuffer, Font20, cl_CYAN, cl_BLACK);
+		  ili9341_WriteString(20, 70, TextDispBuffer, Font16, cl_CYAN, cl_BLACK);
 
 		  sprintf(TextDispBuffer,"I mA: %d    ", inata.CURRENT);
-		  ili9341_WriteString(20, 95, TextDispBuffer, Font20, cl_CYAN, cl_BLACK);
+		  ili9341_WriteString(20, 95, TextDispBuffer, Font16, cl_CYAN, cl_BLACK);
 
-		  sprintf(TextDispBuffer,"P mW: %.4f  ", inata.POWER);
-		  ili9341_WriteString(20, 120, TextDispBuffer, Font20, cl_CYAN, cl_BLACK);
-
+		  sprintf(TextDispBuffer,"P mW: %.2f  ", inata.POWER);
+		  ili9341_WriteString(20, 120, TextDispBuffer, Font16, cl_CYAN, cl_BLACK);
 #endif
+
+		  mcp_read.raw[0] = MCP3208_READ_8_DataSPI(&hspi3, M8_CH0);
+		  mcp_read.cv[0] = MCP320x_ADCbit_to_Volt(mcp_read.raw[0]);
+		  sprintf(TextDispBuffer,"MCP : %.2f  ", mcp_read.cv[0]);
+		  ili9341_WriteString(20, 145, TextDispBuffer, Font16, cl_CYAN, cl_BLACK);
+
+		  sprintf(TextDispBuffer,"btn %X %X %d",btn_read[1], btn_read[2], btn_cnt);
+		  ili9341_WriteString(170, 50, TextDispBuffer, Font16, cl_YELLOW, cl_BLACK);
+
 
 		  } // timestamp_one
 
-	  if (HAL_GetTick() >= timestamp_disp){
-	  		timestamp_disp += 10;
-	  		running_box();
-
-	  }// timestamp_dis
 	  }
   /* USER CODE END 3 */
 }
@@ -264,9 +283,9 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
-  RCC_OscInitStruct.PLL.PLLM = 16;
-  RCC_OscInitStruct.PLL.PLLN = 336;
-  RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV4;
+  RCC_OscInitStruct.PLL.PLLM = 8;
+  RCC_OscInitStruct.PLL.PLLN = 100;
+  RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
   RCC_OscInitStruct.PLL.PLLQ = 4;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
@@ -282,7 +301,7 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_3) != HAL_OK)
   {
     Error_Handler();
   }
@@ -357,6 +376,75 @@ static void MX_SPI2_Init(void)
   /* USER CODE BEGIN SPI2_Init 2 */
 
   /* USER CODE END SPI2_Init 2 */
+
+}
+
+/**
+  * @brief SPI3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_SPI3_Init(void)
+{
+
+  /* USER CODE BEGIN SPI3_Init 0 */
+
+  /* USER CODE END SPI3_Init 0 */
+
+  /* USER CODE BEGIN SPI3_Init 1 */
+
+  /* USER CODE END SPI3_Init 1 */
+  /* SPI3 parameter configuration*/
+  hspi3.Instance = SPI3;
+  hspi3.Init.Mode = SPI_MODE_MASTER;
+  hspi3.Init.Direction = SPI_DIRECTION_2LINES;
+  hspi3.Init.DataSize = SPI_DATASIZE_8BIT;
+  hspi3.Init.CLKPolarity = SPI_POLARITY_LOW;
+  hspi3.Init.CLKPhase = SPI_PHASE_1EDGE;
+  hspi3.Init.NSS = SPI_NSS_SOFT;
+  hspi3.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_32;
+  hspi3.Init.FirstBit = SPI_FIRSTBIT_MSB;
+  hspi3.Init.TIMode = SPI_TIMODE_DISABLE;
+  hspi3.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+  hspi3.Init.CRCPolynomial = 10;
+  if (HAL_SPI_Init(&hspi3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN SPI3_Init 2 */
+
+  /* USER CODE END SPI3_Init 2 */
+
+}
+
+/**
+  * @brief TIM10 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM10_Init(void)
+{
+
+  /* USER CODE BEGIN TIM10_Init 0 */
+
+  /* USER CODE END TIM10_Init 0 */
+
+  /* USER CODE BEGIN TIM10_Init 1 */
+
+  /* USER CODE END TIM10_Init 1 */
+  htim10.Instance = TIM10;
+  htim10.Init.Prescaler = 99;
+  htim10.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim10.Init.Period = 999;
+  htim10.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim10.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
+  if (HAL_TIM_Base_Init(&htim10) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM10_Init 2 */
+
+  /* USER CODE END TIM10_Init 2 */
 
 }
 
@@ -456,6 +544,7 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOH_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
+  __HAL_RCC_GPIOD_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOA, LD2_Pin|ili_DC_Pin, GPIO_PIN_RESET);
@@ -464,7 +553,13 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(SPI2_RES_GPIO_Port, SPI2_RES_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(Buzzer_GPIO_Port, Buzzer_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(SPI2_CS_GPIO_Port, SPI2_CS_Pin, GPIO_PIN_SET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(SPI3_CS_GPIO_Port, SPI3_CS_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(ili_RES_GPIO_Port, ili_RES_Pin, GPIO_PIN_RESET);
@@ -482,12 +577,25 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : SPI2_RES_Pin */
-  GPIO_InitStruct.Pin = SPI2_RES_Pin;
+  /*Configure GPIO pins : Btn_1_Pin Btn_2_Pin Btn_3_Pin Btn_4_Pin */
+  GPIO_InitStruct.Pin = Btn_1_Pin|Btn_2_Pin|Btn_3_Pin|Btn_4_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : SPI2_RES_Pin Buzzer_Pin */
+  GPIO_InitStruct.Pin = SPI2_RES_Pin|Buzzer_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(SPI2_RES_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : SPI3_CS_Pin */
+  GPIO_InitStruct.Pin = SPI3_CS_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(SPI3_CS_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : ili_RES_Pin */
   GPIO_InitStruct.Pin = ili_RES_Pin;
@@ -506,7 +614,8 @@ static void MX_GPIO_Init(void)
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 	if(GPIO_Pin == GPIO_PIN_13){
-		INA219_BitReset(&hi2c1, INA219_ADDR_1);
+		//INA219_BitReset(&hi2c1, INA219_ADDR_1);
+		flagc_bz = 4;
 		}
 }
 
@@ -514,7 +623,7 @@ void running_box(){
    //// Running box ------
   int ratte = 1;
   int sizo = 30;
-  int offs = 180;
+  int offs = 190;
   static uint16_t xsh = 0;
   ili9341_FillRect(xsh, offs, ratte ,sizo, cl_MAROON);
   xsh += ratte;
@@ -523,6 +632,92 @@ void running_box(){
 	  ili9341_FillRect(xsh, offs, sizo, sizo, cl_MAROON);
 	  xsh = 0;
 		  }
+
+}
+
+void Button_machine(){
+
+
+//	static uint8_t counter_btn_deb = 0;
+//
+//	if( (0x0F & ~(GPIOB->IDR >> 12)) ){
+//			counter_btn_deb++;
+//
+//		}else{
+//			counter_btn_deb = 0;
+//		}
+
+//		if(counter_btn_deb >= 3){ //// act as debounce
+//			btn_read[0] = (0x0F & ~(GPIOB->IDR >> 12));
+//
+//			//btn_read[1] = btn_read[0];
+//			counter_btn_deb = 0;
+//		}
+
+		//// read 0, falling edge from register??
+
+
+	/*btn_read{
+	 * raw read,
+	 * read from 1 as rising detect,
+	 * read latest (bdebug),
+	 * read latest & erased when fin}
+	 */
+		btn_read[1] = btn_read[0];
+		btn_read[0] = (0x0F & ~(GPIOB->IDR >> 12));
+
+
+		//// rising edge counter
+		if(btn_read[0] && btn_read[1] == 0){
+			btn_cnt += btn_read[0]; //// plus at each hex pos
+			btn_read[2] = btn_read[0]; //// read latest, debug
+			btn_read[3] = btn_read[0]; //// read latest, clearable
+		}
+
+
+}
+
+void buzzer_scream_cnt(){
+	static enum {bz_init, bz_silent, bz_scream} bz_st = bz_init;
+	//uint16_t tup = 100, tdn = 50;
+
+		switch(bz_st){
+		default:
+		case bz_init:
+			//HAL_GPIO_WritePin(Buzzer_GPIO_Port, Buzzer_Pin, GPIO_PIN_RESET);
+
+			if(flagc_bz > 0){
+				timestamp_bz = bzz_t_priod_up + HAL_GetTick(); //
+
+				bz_st = bz_scream;
+				/// down flag_counter every 1 scream
+				flagc_bz--;
+
+			}
+			break;
+
+		case bz_scream:
+			HAL_GPIO_WritePin(Buzzer_GPIO_Port, Buzzer_Pin, GPIO_PIN_SET);
+
+			if(HAL_GetTick() >= timestamp_bz){
+				timestamp_bz = bzz_t_priod_dn + HAL_GetTick();
+
+
+				bz_st = bz_silent;
+			}
+			break;
+
+
+		case bz_silent:
+			HAL_GPIO_WritePin(Buzzer_GPIO_Port, Buzzer_Pin, GPIO_PIN_RESET);
+
+			if(HAL_GetTick() >= timestamp_bz){
+
+				bz_st = bz_init;
+			}
+
+			break;
+		}
 
 }
 
@@ -615,6 +810,16 @@ void running_box(){
 //		break;
 //	}
 //}
+
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+//	if(htim == &htim11){
+//		_micro += 65535;
+//	}
+	if(htim == &htim10){
+		_millis++;
+	}
+}
 
 /* USER CODE END 4 */
 

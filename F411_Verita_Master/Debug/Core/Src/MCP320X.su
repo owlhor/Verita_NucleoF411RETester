@@ -1,0 +1,3 @@
+../Core/Src/MCP320X.c:19:10:MCP3202_READ_8_DataSPI	32	static
+../Core/Src/MCP320X.c:60:10:MCP3208_READ_8_DataSPI	32	static
+../Core/Src/MCP320X.c:80:7:MCP320x_ADCbit_to_Volt	16	static

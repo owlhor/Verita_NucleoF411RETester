@@ -2,6 +2,7 @@
  * Verita_PTC.h
  *
  *  Created on: Feb 22, 2023
+ *  Lastupdate: Feb 28, 2023
  *      Author: owl_hor
  */
 
@@ -11,11 +12,12 @@
 #include "stm32f4xx_hal.h"
 
 typedef enum{
-	VRT_ERROR  = 0x90U,
-	VRT_OK     = 0x91U,
-	VRT_Busy   = 0x92U,
-	VRT_Regain = 0x93U,
-	VRT_Next   = 0x94U,
+	VRT_ERROR    = 0x90U,
+	VRT_OK       = 0x91U,
+	VRT_Busy     = 0x92U,
+	VRT_Regain   = 0x93U,
+	VRT_Next     = 0x94U,
+	VRT_DataLoss = 0x95U
 } VRTPTC_StatusTypedef;
 
 

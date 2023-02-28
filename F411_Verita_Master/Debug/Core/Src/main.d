@@ -27,11 +27,14 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
  ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_pwr.h \
  ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_pwr_ex.h \
  ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_spi.h \
+ ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim.h \
+ ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim_ex.h \
  ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_uart.h \
  ../Core/Src/LCDrv_f4_spi/Fonts/fonts.h \
  ../Core/Src/LCDrv_f4_spi/ili9341.h \
  ../Core/Src/LCDrv_f4_spi/Fonts/fonts.h ../Core/Src/LCDrv_f4_spi/bmp.h \
- ../Core/Inc/testimg.h ../Core/Inc/INA219.h ../Core/Inc/Verita_PTC.h
+ ../Core/Inc/testimg.h ../Core/Inc/INA219.h ../Core/Inc/MCP320X.h \
+ ../Core/Inc/Verita_PTC.h
 ../Core/Inc/main.h:
 ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal.h:
 ../Core/Inc/stm32f4xx_hal_conf.h:
@@ -61,6 +64,8 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
 ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_pwr.h:
 ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_pwr_ex.h:
 ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_spi.h:
+../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim.h:
+../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim_ex.h:
 ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_uart.h:
 ../Core/Src/LCDrv_f4_spi/Fonts/fonts.h:
 ../Core/Src/LCDrv_f4_spi/ili9341.h:
@@ -68,4 +73,5 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
 ../Core/Src/LCDrv_f4_spi/bmp.h:
 ../Core/Inc/testimg.h:
 ../Core/Inc/INA219.h:
+../Core/Inc/MCP320X.h:
 ../Core/Inc/Verita_PTC.h:
