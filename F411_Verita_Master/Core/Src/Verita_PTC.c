@@ -21,7 +21,7 @@ VRTPTC_StatusTypedef Rx_Verita_engine(uint8_t *Rxbffr, uint32_t *regisk){
 		uint32_t U32;
 	}logu;
 
-	//uint8_t chksum = 0;
+	uint8_t chksum = 0;
 
 	switch (verita_engine){
 	default:

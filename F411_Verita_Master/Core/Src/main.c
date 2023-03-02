@@ -75,13 +75,16 @@ VRTPTC_StatusTypedef engst;
 uint8_t flag_vrt_en = 0;
 uint32_t verita_regis[16] = {0};
 
+//uint32_t flashboot[32000] = {0};
+
 //// --------- INA219 ------------------------------------
 union {
 	uint8_t U8[12];
 	uint16_t U16[6];
 }INATT;
 
-INA219_Read_Set inata;
+INA219_Read_Set inata; // read first point
+INA219_Read_Set inatb; // read second point
 INA219_Conf_Strc cofgra;
 
 //// ---------------- MCP3208 ------------------------
@@ -100,7 +103,7 @@ uint8_t flagc_bz = 0; // flag counter for buzzer
 uint8_t btn_read[4] = {0}; // use Btn 3 as last process val
 uint16_t btn_cnt = 0;
 
-uint16_t bzz_t_priod_up = 150;
+uint16_t bzz_t_priod_up = 250;
 uint16_t bzz_t_priod_dn = 100;
 
 //// ________________________________________________________________
@@ -120,6 +123,7 @@ static void MX_TIM10_Init(void);
 void running_box();
 void buzzer_scream_cnt();
 void Button_machine();
+void State_Script_1();
 //VRTPTC_StatusTypedef Rx_Verita_engine(uint8_t *Rxbffr, uint32_t *regisk);
 /* USER CODE END PFP */
 
@@ -193,6 +197,13 @@ int main(void)
   ili9341_FillRect(50, 20, 50, 20, cl_RED);
   ili9341_FillRect(100, 20, 50, 20, cl_GREEN);
   ili9341_FillRect(150, 20, 50, 20, cl_BLUE);
+
+
+  //// for storage test only
+//  for(register int i = 0; i < 30000 ;i++){
+//	  flashboot[i] = i+2;
+//  }
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -206,10 +217,11 @@ int main(void)
 	  Button_machine();
 
 	  if (HAL_GetTick() >= timestamp_buzbtn){
-	 	  		timestamp_buzbtn += 10;
-	 	  		running_box();
-	 	  		buzzer_scream_cnt();
-	 	  	  }// timestamp_dis
+		timestamp_buzbtn += 10;
+
+		running_box();
+		//buzzer_scream_cnt();
+	  }// timestamp_dis
 	  ////  ------------- UART Recieve --------------------------
 	  HAL_UART_Receive_DMA(&huart6, &RxBufferMtCl[0], 10);
 	  engst = Rx_Verita_engine(RxBufferMtCl, verita_regis);
@@ -433,9 +445,9 @@ static void MX_TIM10_Init(void)
 
   /* USER CODE END TIM10_Init 1 */
   htim10.Instance = TIM10;
-  htim10.Init.Prescaler = 99;
+  htim10.Init.Prescaler = 999;
   htim10.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim10.Init.Period = 999;
+  htim10.Init.Period = 4999;
   htim10.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim10.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
   if (HAL_TIM_Base_Init(&htim10) != HAL_OK)
@@ -612,13 +624,6 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
-void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
-	if(GPIO_Pin == GPIO_PIN_13){
-		//INA219_BitReset(&hi2c1, INA219_ADDR_1);
-		flagc_bz = 4;
-		}
-}
-
 void running_box(){
    //// Running box ------
   int ratte = 1;
@@ -686,14 +691,18 @@ void buzzer_scream_cnt(){
 		case bz_init:
 			//HAL_GPIO_WritePin(Buzzer_GPIO_Port, Buzzer_Pin, GPIO_PIN_RESET);
 
-			if(flagc_bz > 0){
+			if(flagc_bz){
+
+				HAL_TIM_Base_Start_IT(&htim10);
 				timestamp_bz = bzz_t_priod_up + HAL_GetTick(); //
 
 				bz_st = bz_scream;
 				/// down flag_counter every 1 scream
 				flagc_bz--;
-
+			}else{
+				HAL_TIM_Base_Stop_IT(&htim10);
 			}
+
 			break;
 
 		case bz_scream:
@@ -701,7 +710,6 @@ void buzzer_scream_cnt(){
 
 			if(HAL_GetTick() >= timestamp_bz){
 				timestamp_bz = bzz_t_priod_dn + HAL_GetTick();
-
 
 				bz_st = bz_silent;
 			}
@@ -713,7 +721,15 @@ void buzzer_scream_cnt(){
 
 			if(HAL_GetTick() >= timestamp_bz){
 
+				if(flagc_bz){
+					timestamp_bz = bzz_t_priod_up + HAL_GetTick(); //
+
+					flagc_bz--;
+					bz_st = bz_scream;
+
+				}else{
 				bz_st = bz_init;
+				}
 			}
 
 			break;
@@ -721,105 +737,27 @@ void buzzer_scream_cnt(){
 
 }
 
-//VRTPTC_StatusTypedef Rx_Verita_engine(uint8_t *Rxbffr, uint32_t *regisk){
-//	/*
-//	 * @param Rxbffr - input uart buffer
-//	 * @param regisk - register need the result be stored
-//	 */
-//	static uint8_t logger[12] = {0}; /// log Rxbffr without head packet
-//	union{
-//		uint8_t  U8[4];
-//		uint32_t U32;
-//	}logu;
-//
-//	//uint8_t chksum = 0;
-//
-//	switch (verita_engine){
-//	default:
-//	case init:
-//
-//		if(flag_vrt_en || Rxbffr[0] == 0x56){ //
-//			verita_engine = unpack;
-//		}
-//		break;
-//
-//	case unpack:
-//
-//		if(Rxbffr[0] == 0x56 && Rxbffr[1] == 0x52 && Rxbffr[2] == 0x54){
-//
-//			//// log data first / prevent overwrite
-//			for(register int k = 0; k < 7; k++){
-//				logger[k] = Rxbffr[k+3];
-//			}
-//
-//			//// checksum here
-////			for(register int i = 0;i < 5; i++){
-////				chksum += logger[i];
-////			}
-////			if(~chksum == logger[6]){
-////				// pass
-////			}
-//
-//			//// mark that this data is already read
-//			Rxbffr[0] = 0xFF;
-//			verita_engine = decode;
-//		}
-//		else{
-//			verita_engine = init;
-//			flag_vrt_en = 0;
-//
-//			//// destroy data
-//			for(register int i = 0;i < sizeof(Rxbffr); i++){
-//				Rxbffr[i] = 0x00;
-//			}
-//		}
-//		break;
-//
-//	case decode:
-//		verita_engine = init;
-//
-//		//// DATA phase, insert 32bit data into register box
-//		if(logger[0] <= 0x20){
-//
-//			logu.U8[3] = logger[1];
-//			logu.U8[2] = logger[2];
-//			logu.U8[1] = logger[3];
-//			logu.U8[0] = logger[4];
-//
-//			regisk[logger[0]] = logu.U32;
-//			return VRT_OK;
-//		}
-//
-//		//// CMD phase, return recieved Command
-//		if(logger[0] >= 0x90){
-//			switch(logger[0]){
-//				default:
-//				case 0x90:
-//					return VRT_ERROR;
-//				case 0x91:
-//					return VRT_OK;
-//				case 0x92:
-//					return VRT_Busy;
-//				case 0x93:
-//					return VRT_Regain;
-//				case 0x94:
-//					return VRT_Next;
-//			}
-//		}
-//
-//		break;
-//	}
-//}
+void State_Script_1(){
+
+}
+
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
+	if(GPIO_Pin == GPIO_PIN_13){
+		//INA219_BitReset(&hi2c1, INA219_ADDR_1);
+		flagc_bz = 12;
+		buzzer_scream_cnt();
+		}
+}
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
-//	if(htim == &htim11){
-//		_micro += 65535;
-//	}
 	if(htim == &htim10){
 		_millis++;
+		buzzer_scream_cnt();
 	}
 }
+
+
 
 /* USER CODE END 4 */
 
