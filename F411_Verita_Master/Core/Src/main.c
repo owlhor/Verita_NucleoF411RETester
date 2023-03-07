@@ -15,6 +15,23 @@
   *
   ******************************************************************************
   */
+  /* ================ FRA506_Independent Study =================================
+   * ================ VERITA: Nucleo F411RE Tester ====  --->>>  Master  >>>----
+   *
+   * Author: owl_hor, FRAB#7 @FIBO KMUTT
+   * Advisor: Pittiwut Teerakittikul, Ph.D & Puttinart Archewawanich (AlphaP2712)
+   * --------------------------------------------------------------------------
+   *  ===== peripheral Usage (Last update: 7 Mar 2023) ===========
+   *  - [I2C1]   -> 2x INA219 Power Monitors
+   *  - [SPI2]   -> ILI9341 LCD (RobertoBenjami's stm32_graphics_display_drivers library
+   *  				 / didn't use hardware SPI, use position of GPIO)
+   *  - [SPI3]   -> MCP3208 12bit 0-5V Range ADC
+   *  - [USART1] -> Bootloader to client
+   *  - [USART2] -> UART Terminal report to PC / read by Tera term, or any.
+   *  - [USART6] -> Verita protocol [Master <-> Client]
+   *
+   * ================ pin GPIO Usage ===========
+  */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
@@ -33,6 +50,7 @@
 #include "INA219.h"
 #include "MCP320X.h"
 #include "Verita_PTC.h"
+#include "Client_bin.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -53,11 +71,11 @@
 /* Private variables ---------------------------------------------------------*/
 I2C_HandleTypeDef hi2c1;
 
-SPI_HandleTypeDef hspi2;
 SPI_HandleTypeDef hspi3;
 
 TIM_HandleTypeDef htim10;
 
+UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 UART_HandleTypeDef huart6;
 DMA_HandleTypeDef hdma_usart6_rx;
@@ -67,15 +85,17 @@ DMA_HandleTypeDef hdma_usart6_rx;
 //// --------------------UART Buffer -------------------
 char TextDispBuffer[100] = {0}; // Display Text
 char TextUARTBuffer[100] = {0}; // UART Console Text
-uint8_t RxBufferMtCl[10] = {0}; // Recieved packet buffer
+uint8_t RxBufferMtCl[RxbufferSize_VRT] = {0}; // Recieved packet buffer
 
 //// ---------- Verita Register -------------------------
 
-VRTPTC_StatusTypedef engst;
-uint8_t flag_vrt_en = 0;
-uint32_t verita_regis[16] = {0};
+VRTPTC_StatusTypedef engst; // return engine state
 
-//uint32_t flashboot[32000] = {0};
+//uint8_t flag_vrt_en = 0;
+//// = = = = = register bank
+uint32_t verita_regis[16] = {0};
+Verita_Register_Bank VRB;
+
 
 //// --------- INA219 ------------------------------------
 union {
@@ -102,6 +122,7 @@ uint32_t _millis = 0;
 uint8_t flagc_bz = 0; // flag counter for buzzer
 uint8_t btn_read[4] = {0}; // use Btn 3 as last process val
 uint16_t btn_cnt = 0;
+uint8_t counter = 0;
 
 uint16_t bzz_t_priod_up = 250;
 uint16_t bzz_t_priod_dn = 100;
@@ -114,11 +135,11 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
 static void MX_USART2_UART_Init(void);
-static void MX_SPI2_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_USART6_UART_Init(void);
 static void MX_SPI3_Init(void);
 static void MX_TIM10_Init(void);
+static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
 void running_box();
 void buzzer_scream_cnt();
@@ -162,21 +183,18 @@ int main(void)
   MX_GPIO_Init();
   MX_DMA_Init();
   MX_USART2_UART_Init();
-  MX_SPI2_Init();
   MX_I2C1_Init();
   MX_USART6_UART_Init();
   MX_SPI3_Init();
   MX_TIM10_Init();
+  MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
 
-  HAL_TIM_Base_Start_IT(&htim10);
+  HAL_TIM_Base_Start_IT(&htim10); // buzzer timer
 
   ili9341_Init();
   ili9341_DisplayOn();
 
-
-//  ILI9341_Init();
-//  ILI9341_FillScreen(ILI9341_BLACK);
 
 #ifdef INA219_Wrk
   INA219_INIT_Calibrate(&hi2c1, INA219_ADDR_1);
@@ -198,10 +216,13 @@ int main(void)
   ili9341_FillRect(100, 20, 50, 20, cl_GREEN);
   ili9341_FillRect(150, 20, 50, 20, cl_BLUE);
 
+////  ------------- UART Recieve --------------------------
+  HAL_UART_Receive_DMA(&huart6, &RxBufferMtCl[0], RxbufferSize_VRT);
 
   //// for storage test only
-//  for(register int i = 0; i < 30000 ;i++){
-//	  flashboot[i] = i+2;
+//  uint32_t flashboot[3000];
+//  for(register int i = 0; i < 3000 ;i++){
+//	  flashboot[i] = F411_Verita_Client[i];
 //  }
 
   /* USER CODE END 2 */
@@ -222,9 +243,11 @@ int main(void)
 		running_box();
 		//buzzer_scream_cnt();
 	  }// timestamp_dis
-	  ////  ------------- UART Recieve --------------------------
-	  HAL_UART_Receive_DMA(&huart6, &RxBufferMtCl[0], 10);
-	  engst = Rx_Verita_engine(RxBufferMtCl, verita_regis);
+	  ////  ------------- Verita UART Recieve --------------------------
+
+	  //HAL_UART_Receive_DMA(&huart6, &RxBufferMtCl[0], 9); // Normal DMA
+	  //engst = Rx_Verita_engine(RxBufferMtCl, verita_regis);
+	  Rx_Verita_engine(RxBufferMtCl, VRB.U32);
 	  //// ----------------------------------------------------
 
 	  if (HAL_GetTick() >= timestamp_one){
@@ -354,44 +377,6 @@ static void MX_I2C1_Init(void)
 }
 
 /**
-  * @brief SPI2 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_SPI2_Init(void)
-{
-
-  /* USER CODE BEGIN SPI2_Init 0 */
-
-  /* USER CODE END SPI2_Init 0 */
-
-  /* USER CODE BEGIN SPI2_Init 1 */
-
-  /* USER CODE END SPI2_Init 1 */
-  /* SPI2 parameter configuration*/
-  hspi2.Instance = SPI2;
-  hspi2.Init.Mode = SPI_MODE_MASTER;
-  hspi2.Init.Direction = SPI_DIRECTION_2LINES;
-  hspi2.Init.DataSize = SPI_DATASIZE_16BIT;
-  hspi2.Init.CLKPolarity = SPI_POLARITY_LOW;
-  hspi2.Init.CLKPhase = SPI_PHASE_1EDGE;
-  hspi2.Init.NSS = SPI_NSS_SOFT;
-  hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_8;
-  hspi2.Init.FirstBit = SPI_FIRSTBIT_MSB;
-  hspi2.Init.TIMode = SPI_TIMODE_DISABLE;
-  hspi2.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
-  hspi2.Init.CRCPolynomial = 10;
-  if (HAL_SPI_Init(&hspi2) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN SPI2_Init 2 */
-
-  /* USER CODE END SPI2_Init 2 */
-
-}
-
-/**
   * @brief SPI3 Initialization Function
   * @param None
   * @retval None
@@ -457,6 +442,39 @@ static void MX_TIM10_Init(void)
   /* USER CODE BEGIN TIM10_Init 2 */
 
   /* USER CODE END TIM10_Init 2 */
+
+}
+
+/**
+  * @brief USART1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART1_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART1_Init 0 */
+
+  /* USER CODE END USART1_Init 0 */
+
+  /* USER CODE BEGIN USART1_Init 1 */
+
+  /* USER CODE END USART1_Init 1 */
+  huart1.Instance = USART1;
+  huart1.Init.BaudRate = 115200;
+  huart1.Init.WordLength = UART_WORDLENGTH_8B;
+  huart1.Init.StopBits = UART_STOPBITS_1;
+  huart1.Init.Parity = UART_PARITY_NONE;
+  huart1.Init.Mode = UART_MODE_TX_RX;
+  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART1_Init 2 */
+
+  /* USER CODE END USART1_Init 2 */
 
 }
 
@@ -559,22 +577,16 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOD_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, LD2_Pin|ili_DC_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOC, LCD_RS_Pin|LCD_CS_Pin|LCD_MOSI_Pin|Buzzer_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(SPI2_RES_GPIO_Port, SPI2_RES_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOA, LCD_RST_Pin|LD2_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(Buzzer_GPIO_Port, Buzzer_Pin, GPIO_PIN_RESET);
-
-  /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(SPI2_CS_GPIO_Port, SPI2_CS_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(LCD_SCK_GPIO_Port, LCD_SCK_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(SPI3_CS_GPIO_Port, SPI3_CS_Pin, GPIO_PIN_RESET);
-
-  /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(ili_RES_GPIO_Port, ili_RES_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : B1_Pin */
   GPIO_InitStruct.Pin = B1_Pin;
@@ -582,12 +594,39 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : LD2_Pin SPI2_CS_Pin ili_DC_Pin */
-  GPIO_InitStruct.Pin = LD2_Pin|SPI2_CS_Pin|ili_DC_Pin;
+  /*Configure GPIO pins : LCD_RS_Pin LCD_CS_Pin Buzzer_Pin */
+  GPIO_InitStruct.Pin = LCD_RS_Pin|LCD_CS_Pin|Buzzer_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : LCD_MISO_Pin */
+  GPIO_InitStruct.Pin = LCD_MISO_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(LCD_MISO_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : LCD_MOSI_Pin */
+  GPIO_InitStruct.Pin = LCD_MOSI_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+  HAL_GPIO_Init(LCD_MOSI_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : LCD_RST_Pin LD2_Pin */
+  GPIO_InitStruct.Pin = LCD_RST_Pin|LD2_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : LCD_SCK_Pin */
+  GPIO_InitStruct.Pin = LCD_SCK_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_MEDIUM;
+  HAL_GPIO_Init(LCD_SCK_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : Btn_1_Pin Btn_2_Pin Btn_3_Pin Btn_4_Pin */
   GPIO_InitStruct.Pin = Btn_1_Pin|Btn_2_Pin|Btn_3_Pin|Btn_4_Pin;
@@ -595,26 +634,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : SPI2_RES_Pin Buzzer_Pin */
-  GPIO_InitStruct.Pin = SPI2_RES_Pin|Buzzer_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
-
   /*Configure GPIO pin : SPI3_CS_Pin */
   GPIO_InitStruct.Pin = SPI3_CS_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(SPI3_CS_GPIO_Port, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : ili_RES_Pin */
-  GPIO_InitStruct.Pin = ili_RES_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(ili_RES_GPIO_Port, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
   HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
@@ -669,7 +694,7 @@ void Button_machine(){
 	 * read latest & erased when fin}
 	 */
 		btn_read[1] = btn_read[0];
-		btn_read[0] = (0x0F & ~(GPIOB->IDR >> 12));
+		btn_read[0] = (0x0F & ~(GPIOB->IDR >> 12)); //// available for PB 12 13 14 15 or which the same bank only
 
 
 		//// rising edge counter
@@ -757,6 +782,10 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	}
 }
 
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+	counter++;
+}
 
 
 /* USER CODE END 4 */
