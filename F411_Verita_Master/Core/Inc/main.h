@@ -86,8 +86,12 @@ void Error_Handler(void);
 #define Btn_3_GPIO_Port GPIOB
 #define Btn_4_Pin GPIO_PIN_15
 #define Btn_4_GPIO_Port GPIOB
+#define client_NRST_Pin GPIO_PIN_6
+#define client_NRST_GPIO_Port GPIOC
 #define Buzzer_Pin GPIO_PIN_9
 #define Buzzer_GPIO_Port GPIOC
+#define boot0_trigger_Pin GPIO_PIN_8
+#define boot0_trigger_GPIO_Port GPIOA
 #define TMS_Pin GPIO_PIN_13
 #define TMS_GPIO_Port GPIOA
 #define TCK_Pin GPIO_PIN_14

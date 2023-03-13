@@ -1,0 +1,10 @@
+../Core/Src/bootloader_UART.c:22:6:BL_UART_Start	24	static
+../Core/Src/bootloader_UART.c:44:6:BL_UART_Finish	8	static
+../Core/Src/bootloader_UART.c:54:6:BL_UART_GET_CMD	24	static
+../Core/Src/bootloader_UART.c:81:22:BL_UART_GETVersion	32	static
+../Core/Src/bootloader_UART.c:109:22:BL_UART_GETID	24	static
+../Core/Src/bootloader_UART.c:132:22:BL_UART_Write_Protect	24	static
+../Core/Src/bootloader_UART.c:146:22:BL_UART_Write_UnProtect	24	static
+../Core/Src/bootloader_UART.c:160:22:BL_UART_Readout_Protect	24	static
+../Core/Src/bootloader_UART.c:173:22:BL_UART_Readout_UnProtect	24	static
+../Core/Src/bootloader_UART.c:188:22:BL_UART_wait_ACK	32	static

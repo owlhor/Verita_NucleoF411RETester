@@ -1,6 +1,7 @@
 "./Core/Src/INA219.o"
 "./Core/Src/MCP320X.o"
 "./Core/Src/Verita_PTC.o"
+"./Core/Src/bootloader_UART.o"
 "./Core/Src/main.o"
 "./Core/Src/stm32f4xx_hal_msp.o"
 "./Core/Src/stm32f4xx_it.o"

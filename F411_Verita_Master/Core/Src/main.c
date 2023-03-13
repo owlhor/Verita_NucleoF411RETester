@@ -51,6 +51,7 @@
 #include "MCP320X.h"
 #include "Verita_PTC.h"
 #include "Client_bin.h"
+#include "bootloader_UART.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -86,7 +87,7 @@ DMA_HandleTypeDef hdma_usart6_rx;
 char TextDispBuffer[100] = {0}; // Display Text
 char TextUARTBuffer[100] = {0}; // UART Console Text
 uint8_t RxBufferMtCl[RxbufferSize_VRT] = {0}; // Recieved packet buffer
-
+uint8_t BL_UARTBuffer[20] = {0};
 //// ---------- Verita Register -------------------------
 
 VRTPTC_StatusTypedef engst; // return engine state
@@ -124,6 +125,8 @@ uint8_t btn_read[4] = {0}; // use Btn 3 as last process val
 uint16_t btn_cnt = 0;
 uint8_t counter = 0;
 
+static enum{init, lobby, s_bootloader}GrandState = lobby;
+//// buzzer time period
 uint16_t bzz_t_priod_up = 250;
 uint16_t bzz_t_priod_dn = 100;
 
@@ -145,6 +148,8 @@ void running_box();
 void buzzer_scream_cnt();
 void Button_machine();
 void State_Script_1();
+void simple_scr();
+void GrandState_Verita();
 //VRTPTC_StatusTypedef Rx_Verita_engine(uint8_t *Rxbffr, uint32_t *regisk);
 /* USER CODE END PFP */
 
@@ -195,6 +200,9 @@ int main(void)
   ili9341_Init();
   ili9341_DisplayOn();
 
+  ili9341_FillRect(50, 20, 50, 20, cl_RED);
+  ili9341_FillRect(100, 20, 50, 20, cl_GREEN);
+  ili9341_FillRect(150, 20, 50, 20, cl_BLUE);
 
 #ifdef INA219_Wrk
   INA219_INIT_Calibrate(&hi2c1, INA219_ADDR_1);
@@ -212,9 +220,6 @@ int main(void)
   char temp[]="----------------- F411_Verita_Master --------------------\r\n";
   HAL_UART_Transmit(&huart2, (uint8_t*)temp, strlen(temp),10);
 
-  ili9341_FillRect(50, 20, 50, 20, cl_RED);
-  ili9341_FillRect(100, 20, 50, 20, cl_GREEN);
-  ili9341_FillRect(150, 20, 50, 20, cl_BLUE);
 
 ////  ------------- UART Recieve --------------------------
   HAL_UART_Receive_DMA(&huart6, &RxBufferMtCl[0], RxbufferSize_VRT);
@@ -234,8 +239,15 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+
 	  //// -------- buzzer & Button -----------------
 	  Button_machine();
+	  ////  ------------- Verita UART Recieve --------------------------
+	  //HAL_UART_Receive_DMA(&huart6, &RxBufferMtCl[0], 9); // Normal DMA
+	  //engst = Rx_Verita_engine(RxBufferMtCl, verita_regis);
+	  Rx_Verita_engine(RxBufferMtCl, VRB.U32);
+	  //// ----------------------------------------------------
+
 
 	  if (HAL_GetTick() >= timestamp_buzbtn){
 		timestamp_buzbtn += 10;
@@ -243,52 +255,13 @@ int main(void)
 		running_box();
 		//buzzer_scream_cnt();
 	  }// timestamp_dis
-	  ////  ------------- Verita UART Recieve --------------------------
 
-	  //HAL_UART_Receive_DMA(&huart6, &RxBufferMtCl[0], 9); // Normal DMA
-	  //engst = Rx_Verita_engine(RxBufferMtCl, verita_regis);
-	  Rx_Verita_engine(RxBufferMtCl, VRB.U32);
-	  //// ----------------------------------------------------
 
 	  if (HAL_GetTick() >= timestamp_one){
 		  timestamp_one += 1000;
 		  HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
 
-		  //ili9341_DrawRGBImage(60, 80, 128, 128, (uint16_t*)image_data_ImageoftestN2);
-#ifdef INA219_Wrk
-
-		  //INATT.U16[1] = INA219Read_cx(&hi2c1, INA219_ADDR_1, INA219_RG_Config);
-		  //INATT.U16[2] = INA219Read_cx(&hi2c1, INA219_ADDR_1, INA219_RG_Current);
-
-		  inata.Bus_V   = INA219Read_BusV(&hi2c1, INA219_ADDR_1);
-		  inata.CURRENT = INA219Read_Current(&hi2c1, INA219_ADDR_1);
-		  inata.POWER   = INA219Read_Power(&hi2c1, INA219_ADDR_1);
-		  inata.SHUNT_V = INA219Read_ShuntV(&hi2c1, INA219_ADDR_1);
-
-		  inata.Calibra =  INA219Read_cx(&hi2c1, INA219_ADDR_1, INA219_RG_Calibra);
-		  inata.Config = INA219Read_cx(&hi2c1, INA219_ADDR_1, INA219_RG_Config);
-
-		  sprintf(TextDispBuffer,"calibrator:%4X", inata.Calibra);
-		  ili9341_WriteString(20, 50, TextDispBuffer, Font12, cl_GREENYELLOW, cl_BLACK);
-
-		  sprintf(TextDispBuffer,"V mV: %d    ", inata.Bus_V);
-		  ili9341_WriteString(20, 70, TextDispBuffer, Font16, cl_CYAN, cl_BLACK);
-
-		  sprintf(TextDispBuffer,"I mA: %d    ", inata.CURRENT);
-		  ili9341_WriteString(20, 95, TextDispBuffer, Font16, cl_CYAN, cl_BLACK);
-
-		  sprintf(TextDispBuffer,"P mW: %.2f  ", inata.POWER);
-		  ili9341_WriteString(20, 120, TextDispBuffer, Font16, cl_CYAN, cl_BLACK);
-#endif
-
-		  mcp_read.raw[0] = MCP3208_READ_8_DataSPI(&hspi3, M8_CH0);
-		  mcp_read.cv[0] = MCP320x_ADCbit_to_Volt(mcp_read.raw[0]);
-		  sprintf(TextDispBuffer,"MCP : %.2f  ", mcp_read.cv[0]);
-		  ili9341_WriteString(20, 145, TextDispBuffer, Font16, cl_CYAN, cl_BLACK);
-
-		  sprintf(TextDispBuffer,"btn %X %X %d",btn_read[1], btn_read[2], btn_cnt);
-		  ili9341_WriteString(170, 50, TextDispBuffer, Font16, cl_YELLOW, cl_BLACK);
-
+		  GrandState_Verita();
 
 		  } // timestamp_one
 
@@ -462,9 +435,9 @@ static void MX_USART1_UART_Init(void)
   /* USER CODE END USART1_Init 1 */
   huart1.Instance = USART1;
   huart1.Init.BaudRate = 115200;
-  huart1.Init.WordLength = UART_WORDLENGTH_8B;
+  huart1.Init.WordLength = UART_WORDLENGTH_9B;
   huart1.Init.StopBits = UART_STOPBITS_1;
-  huart1.Init.Parity = UART_PARITY_NONE;
+  huart1.Init.Parity = UART_PARITY_EVEN;
   huart1.Init.Mode = UART_MODE_TX_RX;
   huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
   huart1.Init.OverSampling = UART_OVERSAMPLING_16;
@@ -577,10 +550,11 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOD_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOC, LCD_RS_Pin|LCD_CS_Pin|LCD_MOSI_Pin|Buzzer_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOC, LCD_RS_Pin|LCD_CS_Pin|LCD_MOSI_Pin|client_NRST_Pin
+                          |Buzzer_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, LCD_RST_Pin|LD2_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, LCD_RST_Pin|LD2_Pin|boot0_trigger_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(LCD_SCK_GPIO_Port, LCD_SCK_Pin, GPIO_PIN_RESET);
@@ -594,8 +568,8 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : LCD_RS_Pin LCD_CS_Pin Buzzer_Pin */
-  GPIO_InitStruct.Pin = LCD_RS_Pin|LCD_CS_Pin|Buzzer_Pin;
+  /*Configure GPIO pins : LCD_RS_Pin LCD_CS_Pin client_NRST_Pin Buzzer_Pin */
+  GPIO_InitStruct.Pin = LCD_RS_Pin|LCD_CS_Pin|client_NRST_Pin|Buzzer_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -614,8 +588,8 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
   HAL_GPIO_Init(LCD_MOSI_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : LCD_RST_Pin LD2_Pin */
-  GPIO_InitStruct.Pin = LCD_RST_Pin|LD2_Pin;
+  /*Configure GPIO pins : LCD_RST_Pin LD2_Pin boot0_trigger_Pin */
+  GPIO_InitStruct.Pin = LCD_RST_Pin|LD2_Pin|boot0_trigger_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -665,8 +639,46 @@ void running_box(){
 
 }
 
-void Button_machine(){
+void simple_scr(){
+	  //ili9341_DrawRGBImage(60, 80, 128, 128, (uint16_t*)image_data_ImageoftestN2);
+#ifdef INA219_Wrk
 
+	  //INATT.U16[1] = INA219Read_cx(&hi2c1, INA219_ADDR_1, INA219_RG_Config);
+	  //INATT.U16[2] = INA219Read_cx(&hi2c1, INA219_ADDR_1, INA219_RG_Current);
+
+	  inata.Bus_V   = INA219Read_BusV(&hi2c1, INA219_ADDR_1);
+	  inata.CURRENT = INA219Read_Current(&hi2c1, INA219_ADDR_1);
+	  inata.POWER   = INA219Read_Power(&hi2c1, INA219_ADDR_1);
+	  inata.SHUNT_V = INA219Read_ShuntV(&hi2c1, INA219_ADDR_1);
+
+	  inata.Calibra =  INA219Read_cx(&hi2c1, INA219_ADDR_1, INA219_RG_Calibra);
+	  inata.Config = INA219Read_cx(&hi2c1, INA219_ADDR_1, INA219_RG_Config);
+
+	  sprintf(TextDispBuffer,"calibrator:%4X", inata.Calibra);
+	  ili9341_WriteString(20, 50, TextDispBuffer, Font12, cl_GREENYELLOW, cl_BLACK);
+
+	  sprintf(TextDispBuffer,"V mV: %d    ", inata.Bus_V);
+	  ili9341_WriteString(20, 70, TextDispBuffer, Font16, cl_CYAN, cl_BLACK);
+
+	  sprintf(TextDispBuffer,"I mA: %d    ", inata.CURRENT);
+	  ili9341_WriteString(20, 95, TextDispBuffer, Font16, cl_CYAN, cl_BLACK);
+
+	  sprintf(TextDispBuffer,"P mW: %.2f  ", inata.POWER);
+	  ili9341_WriteString(20, 120, TextDispBuffer, Font16, cl_CYAN, cl_BLACK);
+#endif
+
+	  mcp_read.raw[0] = MCP3208_READ_8_DataSPI(&hspi3, M8_CH0);
+	  mcp_read.cv[0] = MCP320x_ADCbit_to_Volt(mcp_read.raw[0]);
+	  sprintf(TextDispBuffer,"MCP : %.2f  ", mcp_read.cv[0]);
+	  ili9341_WriteString(20, 145, TextDispBuffer, Font16, cl_CYAN, cl_BLACK);
+
+	  sprintf(TextDispBuffer,"btn %X %X %d",btn_read[1], btn_read[2], btn_cnt);
+	  ili9341_WriteString(170, 50, TextDispBuffer, Font16, cl_YELLOW, cl_BLACK);
+
+}
+
+
+void Button_machine(){
 
 //	static uint8_t counter_btn_deb = 0;
 //
@@ -684,9 +696,6 @@ void Button_machine(){
 //			counter_btn_deb = 0;
 //		}
 
-		//// read 0, falling edge from register??
-
-
 	/*btn_read{
 	 * raw read,
 	 * read from 1 as rising detect,
@@ -695,7 +704,6 @@ void Button_machine(){
 	 */
 		btn_read[1] = btn_read[0];
 		btn_read[0] = (0x0F & ~(GPIOB->IDR >> 12)); //// available for PB 12 13 14 15 or which the same bank only
-
 
 		//// rising edge counter
 		if(btn_read[0] && btn_read[1] == 0){
@@ -766,11 +774,51 @@ void State_Script_1(){
 
 }
 
+void GrandState_Verita(){
+
+
+	switch(GrandState){
+	default:
+	case lobby:
+		simple_scr();
+		break; // lobby
+
+	case init:
+		break;
+
+	case s_bootloader:
+
+		BL_UART_Start(&huart1);
+
+		//BL_UART_GET_CMD(&huart1, BL_UARTBuffer);
+		//BL_UART_GETVersion(&huart1, BL_UARTBuffer);
+		BL_UART_GETID(&huart1, BL_UARTBuffer);
+
+		//BL_UART_Readout_Protect(&huart1);
+		//HAL_Delay(200);
+		//BL_UART_Readout_UnProtect(&huart1);
+
+//		BL_UART_Write_UnProtect(&huart1);
+//
+//		BL_UART_Write_Protect(&huart1);
+//		HAL_Delay(100);
+
+		BL_UART_Finish();
+
+		GrandState = lobby;
+
+		break;
+	}
+}
+
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 	if(GPIO_Pin == GPIO_PIN_13){
 		//INA219_BitReset(&hi2c1, INA219_ADDR_1);
 		flagc_bz = 12;
 		buzzer_scream_cnt();
+
+		//// bootloader test
+		GrandState = s_bootloader;
 		}
 }
 

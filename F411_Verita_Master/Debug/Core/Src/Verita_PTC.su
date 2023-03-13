@@ -1,1 +1,3 @@
-../Core/Src/Verita_PTC.c:13:22:Rx_Verita_engine	24	static
+../Core/Src/Verita_PTC.c:31:22:Rx_Verita_engine	24	static
+../Core/Src/Verita_PTC.c:275:6:Tx_UART_Verita_Packet_u8	56	static
+../Core/Src/Verita_PTC.c:304:6:Tx_UART_Verita_Packet_u32	56	static
