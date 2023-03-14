@@ -49,17 +49,24 @@ typedef enum{
 typedef enum{
 	UB_ACK  = 0x79U,
 	UB_NACK = 0x1FU,
-	UB_Timeout = 0xABU //// defined by myself, non official
+	UB_Timeout = 0xABU, //// defined by myself, non official
+	UB_ParamERR = 0xBCU
 }UARTBootloader_state;
 
 void BL_UART_Start(UART_HandleTypeDef *huart);
 void BL_UART_Finish();
-void BL_UART_UP(UART_HandleTypeDef *huart, uint8_t *databoot);
-void BL_UART_GET_CMD(UART_HandleTypeDef *huart, uint8_t *bufferd);
+
+//void BL_UART_UP(UART_HandleTypeDef *huart, uint8_t *databoot);
+
+UARTBootloader_state BL_UART_GET_CMD(UART_HandleTypeDef *huart, uint8_t *bufferd);
 UARTBootloader_state BL_UART_GETID(UART_HandleTypeDef *huart, uint8_t *bufferd);
 UARTBootloader_state BL_UART_GETVersion(UART_HandleTypeDef *huart, uint8_t *bufferd);
+UARTBootloader_state BL_UART_ReadMem(UART_HandleTypeDef *huart,uint32_t addr32, uint8_t numbyte, uint8_t *bufferd);
+UARTBootloader_state BL_UART_Go(UART_HandleTypeDef *huart,uint32_t addr32);
 
 UARTBootloader_state BL_UART_wait_ACK(UART_HandleTypeDef *huart, uint16_t timeout);
+
+//// danger operation: Bootloader Lock (Temporary or forever) Risk
 UARTBootloader_state BL_UART_Readout_Protect(UART_HandleTypeDef *huart);
 UARTBootloader_state BL_UART_Readout_UnProtect(UART_HandleTypeDef *huart);
 UARTBootloader_state BL_UART_Write_Protect(UART_HandleTypeDef *huart);

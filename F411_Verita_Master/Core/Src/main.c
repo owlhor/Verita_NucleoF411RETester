@@ -87,13 +87,15 @@ DMA_HandleTypeDef hdma_usart6_rx;
 char TextDispBuffer[100] = {0}; // Display Text
 char TextUARTBuffer[100] = {0}; // UART Console Text
 uint8_t RxBufferMtCl[RxbufferSize_VRT] = {0}; // Recieved packet buffer
+
 uint8_t BL_UARTBuffer[20] = {0};
+uint8_t BL_MemBuffer[260] = {0};
 //// ---------- Verita Register -------------------------
 
 VRTPTC_StatusTypedef engst; // return engine state
 
 //uint8_t flag_vrt_en = 0;
-//// = = = = = register bank
+//// = = = = = register bank = = = = = = = =
 uint32_t verita_regis[16] = {0};
 Verita_Register_Bank VRB;
 
@@ -794,11 +796,11 @@ void GrandState_Verita(){
 		//BL_UART_GETVersion(&huart1, BL_UARTBuffer);
 		BL_UART_GETID(&huart1, BL_UARTBuffer);
 
-		//BL_UART_Readout_Protect(&huart1);
-		//HAL_Delay(200);
-		//BL_UART_Readout_UnProtect(&huart1);
+		BL_UART_ReadMem(&huart1, 0x08000000U, 255, BL_MemBuffer);
 
-//		BL_UART_Write_UnProtect(&huart1);
+		//BL_UART_Go(&huart1, 0x08007910U);
+
+
 //
 //		BL_UART_Write_Protect(&huart1);
 //		HAL_Delay(100);
