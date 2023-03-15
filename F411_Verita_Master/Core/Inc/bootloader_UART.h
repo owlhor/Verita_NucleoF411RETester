@@ -63,6 +63,9 @@ UARTBootloader_state BL_UART_GETID(UART_HandleTypeDef *huart, uint8_t *bufferd);
 UARTBootloader_state BL_UART_GETVersion(UART_HandleTypeDef *huart, uint8_t *bufferd);
 UARTBootloader_state BL_UART_ReadMem(UART_HandleTypeDef *huart,uint32_t addr32, uint8_t numbyte, uint8_t *bufferd);
 UARTBootloader_state BL_UART_Go(UART_HandleTypeDef *huart,uint32_t addr32);
+UARTBootloader_state BL_UART_WriteMem(UART_HandleTypeDef *huart,uint32_t addr32, uint8_t numbyte,const uint8_t *wdatum);
+
+UARTBootloader_state BL_UART_WriteMem_d(UART_HandleTypeDef *huart,uint32_t addr32, uint8_t numbyte,const uint8_t *wdatum); // dummy
 
 UARTBootloader_state BL_UART_wait_ACK(UART_HandleTypeDef *huart, uint16_t timeout);
 
