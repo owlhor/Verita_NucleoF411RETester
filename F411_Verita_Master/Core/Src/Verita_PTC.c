@@ -87,7 +87,7 @@ VRTPTC_StatusTypedef Rx_Verita_engine(uint8_t *Rxbffr, uint32_t *regisk){
 		else{
 			verita_engine = init;
 
-			index+=9;
+			index += Framesize_VRT; // 9
 			index %= RxbufferSize_VRT; // overflow
 
 //			//// destroy data

@@ -90,7 +90,7 @@ uint8_t RxBufferMtCl[RxbufferSize_VRT] = {0}; // Recieved packet buffer
 
 //// ------- UART Bootloader ---------------
 uint8_t bootloop_n = 0;
-uint8_t bl_n_cr = 0;
+//uint8_t bl_n_cr = 0;
 UARTBootloader_state respo;
 uint16_t boot_size = sizeof(F411_Verita_Client); // size of F411_Verita_Client
 uint8_t BL_UARTBuffer[20] = {0};
@@ -792,55 +792,46 @@ void GrandState_Verita(){
 
 	case init:
 
-		//// test write bootloader
-		// find n times must be loop to upload all code
-		bootloop_n = (boot_size / 256) + ((boot_size % 256)>0 ? 1:0);
-		//bootloop_n = (uint8_t)ceil(boot_size / 256.0);
+//		//// test write bootloader
+//		// find n times must be loop to upload all code
+//		bootloop_n = (boot_size / 256) + ((boot_size % 256)>0 ? 1:0);
+//		//bootloop_n = (uint8_t)ceil(boot_size / 256.0);
+//
+//		// case 31452 -> b must be loop 123 times
+//		for(register int b = 0;b < bootloop_n - 1;b++){
+//			BL_UART_WriteMem_d(&huart1, 0x08000000 + (b*0x100), 255, &F411_Verita_Client[0x100*b]);
+//		}
+//		//// last round: send only left bit (less 255)
+//		HAL_Delay(2);
+//		BL_UART_WriteMem_d(&huart1, 0x08000000 + ((bootloop_n-1)*0x100), boot_size % 256, &F411_Verita_Client[0x100*(bootloop_n-1)]);
 
-		// case 31452 -> b must be loop 123 times
-		for(register int b = 0;b < bootloop_n - 1;b++){
-			BL_UART_WriteMem_d(&huart1, 0x08000000 + (b*0x100), 255, &F411_Verita_Client[0x100*b]);
-		}
-		//// last round: send only left bit (less 255)
-		HAL_Delay(2);
-		BL_UART_WriteMem_d(&huart1, 0x08000000 + ((bootloop_n-1)*0x100), boot_size % 256, &F411_Verita_Client[0x100*(bootloop_n-1)]);
+		BL_UART_Start(&huart1);
+		BL_UART_ExtendEraseMem_SP(&huart1, Erase_MASS_CMD);
+		BL_UART_Finish();
 
 		GrandState = lobby;
 		break;
 
 	case s_bootloader:
 
-		// find n times must be loop to upload all code
+		//// find n times must be loop to upload all code
 		bootloop_n = (boot_size / 256) + ((boot_size % 256)>0 ? 1:0);
 		//bootloop_n = (uint8_t)ceil(boot_size / 256.0);
 
-		bl_n_cr = 0;
-
 		BL_UART_Start(&huart1);
 
-		//BL_UART_GET_CMD(&huart1, BL_UARTBuffer);
-		//BL_UART_GETVersion(&huart1, BL_UARTBuffer);
-		BL_UART_GETID(&huart1, BL_UARTBuffer);
+		//// Flash Memory Erase ============, Erase1_Mass_CMD makes bootloader not response to ALL write CMD / dont know why
+		BL_UART_ExtendEraseMem_SP(&huart1, Erase_Bank1_CMD);
+		BL_UART_ExtendEraseMem_SP(&huart1, Erase_Bank2_CMD);
 
-		//BL_UART_ReadMem(&huart1, 0x08000000U, 255, BL_MemBuffer);
-		//BL_UART_Go(&huart1, 0x08007910U);
-
+		//// WriteMem Set  =========================================
 		//// case 31452 -> b must be loop 123 times  ----------------------------------
 		for(register int b = 0;b < bootloop_n - 1;b++){
 			BL_UART_WriteMem(&huart1, 0x08000000 + (b*0x100), 255, &F411_Verita_Client[0x100*b]);
 		}
-
-
-		//////// method repeat till ACK-------------------------------------------
-//		while(bl_n_cr < bootloop_n - 1){
-//
-//			respo = BL_UART_WriteMem(&huart1, 0x08000000 + (bl_n_cr*0x100), 255, &F411_Verita_Client[0x100*bl_n_cr]);
-//			if(respo == UB_ACK){bl_n_cr++;}
-//		}
-
-		//// last round: send only left bit (less 255)-------------------------------------
+		//// last round: send only left bit (less 255)
 		BL_UART_WriteMem(&huart1, 0x08000000 + ((bootloop_n-1)*0x100), boot_size % 256, &F411_Verita_Client[0x100*(bootloop_n-1)]);
-
+		//// WriteMem Set =========================================
 
 		BL_UART_Finish();
 

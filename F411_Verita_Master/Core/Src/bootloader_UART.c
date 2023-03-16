@@ -7,16 +7,40 @@
 
 #include "bootloader_UART.h"
 
-/* In booting step, THe other operation (especially display writing) must be terminated
+/* STM32F411xx UART Bootloader
  *
- * step 1 - push BOOT0 High
- * step 2 - Reset: pull NRST down
- * step 3 - wait bootloader startup for 74.5ms ++
+ * notion record: https://celestial-pawpaw-92b.notion.site/ST-Link-USART-Bootloader-3128670163404f21b8770e02421ad07f#bded18ef2cf74c3fbfe68c81710f87cb
  *
- * step x - UART send 0x7F
+ * Reference:
+ * AN2606: General bootloader description, STMicroelectronics
+ * AN3515: USART protocol used in the STM32 bootloade, STMicroelectronics
  *
- * step x - Erase (old?) memory (?)
- * step x - Write Memory CMD with code
+ * ------======= External NMOS clamp target's NRST pin is required (recommend)-----------
+ * 		or else, Push Low to Target's NRST directly (the Start, finish must be adapted)
+ *
+ * In booting step, The host's other operation (especially display writing) must be terminated
+ *
+ * 1. Push BOOT0 pin high
+ * 2. Hardware Reset client toggle (NRST client must be separated to master)
+ * 3. Wait for bootloader to start, following Bootloader startup timing diagram for 74.5ms ++
+ * 4. Master send 0x7F to client’s UART bootloader port1
+ * 		(PA9_TX, PA10_RX), wait for ACK
+ * 5. CMD Applies
+ * 6. When finish, Pull boot0 low & generate hardware reset
+ *
+ *  ---- sample of usages ----
+ *  BL_UART_GET_CMD(&huart1, BL_UARTBuffer);
+ *  BL_UART_GETVersion(&huart1, BL_UARTBuffer);
+ *  BL_UART_GETID(&huart1, BL_UARTBuffer);
+ *  BL_UART_ReadMem(&huart1, 0x08000000U, 255, BL_MemBuffer);
+ *  BL_UART_Go(&huart1, 0x08007910U);
+ *
+ *  ---- These function must be used carefully, it can access option bytes ----
+ *  ---  danger operation: Bootloader Lock (Temporary or forever) Risk
+ *  BL_UART_Readout_Protect(UART_HandleTypeDef *huart);
+ *  BL_UART_Readout_UnProtect(UART_HandleTypeDef *huart);
+ *  BL_UART_Write_Protect(UART_HandleTypeDef *huart);
+ *  BL_UART_Write_UnProtect(UART_HandleTypeDef *huart);
  * */
 
 void BL_UART_Start(UART_HandleTypeDef *huart){
@@ -261,7 +285,6 @@ UARTBootloader_state BL_UART_Go(UART_HandleTypeDef *huart,uint32_t addr32){
 	return UB_NACK;
 }
 
-
 UARTBootloader_state BL_UART_WriteMem(UART_HandleTypeDef *huart,uint32_t addr32, uint8_t numbyte,const uint8_t *wdatum){
 	/* @brief code 0x31 Writes up to 256 bytes to the RAM or flash memory starting from an
 						address specified by the application
@@ -270,6 +293,8 @@ UARTBootloader_state BL_UART_WriteMem(UART_HandleTypeDef *huart,uint32_t addr32,
 	 * @param addr32  - start destination address to write (0x xxxx xxxx)
 	 * @param numbyte - num of bytes need to write (0 < n <= 255)
 	 * @param wdatum  - write data bytes
+	 *
+	 * - 16 Mar 23 - *** To write all new datas to the target, Mass erased is required ***
 	 *
 	 *
 	 * - gets a byte, N, which contains the number of data bytes to be received
@@ -307,15 +332,16 @@ UARTBootloader_state BL_UART_WriteMem(UART_HandleTypeDef *huart,uint32_t addr32,
 
 	//// XOR Chksum  (XOR of N and of all data bytes)
 	numbytx[0] = numbyte;
+
 	bffr[0] = numbyte;
+
 	numbytx[1] = numbyte;
 	for(register int i = 0;i <= numbyte;i++){
 		numbytx[1] = numbytx[1]^wdatum[i];
 		//// try
 		bffr[i+1] = wdatum[i]; // bffr[i] = wdatum[i];
 	}
-	// add last data which miss in for loop
-	//bffr[numbyte] = wdatum[numbyte];
+
 	// add chksum to the last buffer,
 	bffr[numbyte+2] = numbytx[1];
 
@@ -332,14 +358,14 @@ UARTBootloader_state BL_UART_WriteMem(UART_HandleTypeDef *huart,uint32_t addr32,
 		response = BL_UART_wait_ACK(huart, 10);
 		if(response == UB_ACK){
 
-//			//// byte 8-n numbyte+ Writedata +chksum -->send chksum separate cause leadtime -> Very high chance NAK
+//			//// byte 8-n numbyte+ Writedata +chksum -->send chksum separate cause leadtime -> Very much NAK occur
 //			HAL_UART_Transmit(huart, &numbytx[0], 1, 5);
 //			HAL_UART_Transmit(huart, wdatum, numbyte+1, 100);
 //			HAL_UART_Transmit(huart, &numbytx[1], 1, 5); //// chksum
 
 			//// byte 8-n numbyte+ Writedata +chksum
 			//HAL_UART_Transmit(huart, &numbytx[0], 1, 5);
-			HAL_UART_Transmit(huart, bffr, numbyte+3, 100);
+			HAL_UART_Transmit(huart, bffr, numbyte+3, 100); //
 
 			response = BL_UART_wait_ACK(huart, 10);
 			if(response == UB_ACK){
@@ -354,56 +380,50 @@ UARTBootloader_state BL_UART_WriteMem(UART_HandleTypeDef *huart,uint32_t addr32,
 	return UB_NACK;
 }
 
-UARTBootloader_state BL_UART_WriteMem_d(UART_HandleTypeDef *huart,uint32_t addr32, uint8_t numbyte,const uint8_t *wdatum){
-	/* 	0x31 dummy
+UARTBootloader_state BL_UART_ExtendEraseMem_SP(UART_HandleTypeDef *huart,UARTBootloader_Erase_CMD erasa){
+	/* @brief code 0x44  Erases from one to all the flash memory pages using two-byte addressing mode
+	 * 				(available only for USART bootloader v3.0 and higher)
+	 * 				*** This function supports special erase only ***
+	 * @param huart   - Pointer to a UART_HandleTypeDef structure that contains
+     *                  the configuration information for the specified UART module.
+     * @param erasa N number of pages to be erased, Use UARTBootloader_Erase_CMD as special erase
+	 *
 	 * */
-	uint8_t Start_WM[2] = {0x31, 0xCE};
-	uint8_t numbytx[2] = {0};
-	uint8_t addr8[5] = {0};
+	uint8_t Start_EER[2] = {0x44, 0xBB};
+	uint8_t response = 0;
+	uint8_t cmd[3] = {0};
 
 	union{
-		uint8_t  U8[4];
-		uint32_t U32;
+		uint8_t  U8[2];
+		uint16_t U16;
 	}loga;
 
-	//// block from do sth in danger zone (option bytes, system memory)
-	if(addr32 >= 0x1FFF0000 && addr32 <= 0x1FFFFFFF){
-		return UB_ParamERR;
-	}
+	loga.U16 = erasa;
 
-	loga.U32 = addr32;
-	//// prepare address byte 3: MSB, byte 6: LSB
-	addr8[0] = loga.U8[3];
-	addr8[1] = loga.U8[2];
-	addr8[2] = loga.U8[1];
-	addr8[3] = loga.U8[0];
-
-	//// XOR Chksum addr
-	addr8[4] = addr8[0]^addr8[1]^addr8[2]^addr8[3];
-
-	//// XOR Chksum  (XOR of N and of all data bytes)
-	numbytx[0] = numbyte;
-	//numbytx[1] = (uint8_t)(0 - numbyte)- 1; //// complements
-	numbytx[1] = numbyte;
-	for(register int i = 0;i < numbyte;i++){
-		numbytx[1] = numbytx[1]^wdatum[i];
-	}
+	//// prepare Special erase CMD & Chksum
+	cmd[0] = loga.U8[1];
+	cmd[1] = loga.U8[0];
+	cmd[2] = loga.U8[0]^loga.U8[1];
 
 	//// Bytes 1-2
-	HAL_UART_Transmit(huart, &Start_WM[0], 2, 10);
-	HAL_Delay(1);
+	HAL_UART_Transmit(huart, &Start_EER[0], 2, 10);
 
-		//// Bytes 3-6 Send ADDR Bytes +
-		//// Byte  7 chksum
-		HAL_UART_Transmit(huart, &addr8[0], 5, 15);
-		HAL_Delay(1);
-			//// byte 8-n numbyte+ Writedata +chksum
-			HAL_UART_Transmit(huart, &numbytx[0], 1, 5);
-			HAL_UART_Transmit(huart, wdatum, numbyte+1, 50);
-			HAL_UART_Transmit(huart, &numbytx[1], 1, 5); //// chksum
+	response = BL_UART_wait_ACK(huart, 10);
+	if(response == UB_ACK){
 
+		//// Bytes 3-4 Send Special erase +
+		//// Byte  5 chksum
+		HAL_UART_Transmit(huart, &cmd[0], 3, 15);
 
-	return UB_ACK;
+		response = BL_UART_wait_ACK(huart, 10);
+		if(response == UB_ACK){
+				return UB_ACK;
+
+		}else{return UB_NACK;}
+
+	}else{return UB_NACK;}
+
+	return UB_NACK;
 }
 
 
@@ -485,3 +505,57 @@ UARTBootloader_state BL_UART_wait_ACK(UART_HandleTypeDef *huart, uint16_t timeou
 	}
 	return UB_NACK;
 }
+
+
+//UARTBootloader_state BL_UART_WriteMem_d(UART_HandleTypeDef *huart,uint32_t addr32, uint8_t numbyte,const uint8_t *wdatum){
+//	/* 	0x31 dummy
+//	 * */
+//	uint8_t Start_WM[2] = {0x31, 0xCE};
+//	uint8_t numbytx[2] = {0};
+//	uint8_t addr8[5] = {0};
+//
+//	union{
+//		uint8_t  U8[4];
+//		uint32_t U32;
+//	}loga;
+//
+//	//// block from do sth in danger zone (option bytes, system memory)
+//	if(addr32 >= 0x1FFF0000 && addr32 <= 0x1FFFFFFF){
+//		return UB_ParamERR;
+//	}
+//
+//	loga.U32 = addr32;
+//	//// prepare address byte 3: MSB, byte 6: LSB
+//	addr8[0] = loga.U8[3];
+//	addr8[1] = loga.U8[2];
+//	addr8[2] = loga.U8[1];
+//	addr8[3] = loga.U8[0];
+//
+//	//// XOR Chksum addr
+//	addr8[4] = addr8[0]^addr8[1]^addr8[2]^addr8[3];
+//
+//	//// XOR Chksum  (XOR of N and of all data bytes)
+//	numbytx[0] = numbyte;
+//	//numbytx[1] = (uint8_t)(0 - numbyte)- 1; //// complements
+//	numbytx[1] = numbyte;
+//	for(register int i = 0;i < numbyte;i++){
+//		numbytx[1] = numbytx[1]^wdatum[i];
+//	}
+//
+//	//// Bytes 1-2
+//	HAL_UART_Transmit(huart, &Start_WM[0], 2, 10);
+//	HAL_Delay(1);
+//
+//		//// Bytes 3-6 Send ADDR Bytes +
+//		//// Byte  7 chksum
+//		HAL_UART_Transmit(huart, &addr8[0], 5, 15);
+//		HAL_Delay(1);
+//			//// byte 8-n numbyte+ Writedata +chksum
+//			HAL_UART_Transmit(huart, &numbytx[0], 1, 5);
+//			HAL_UART_Transmit(huart, wdatum, numbyte+1, 50);
+//			HAL_UART_Transmit(huart, &numbytx[1], 1, 5); //// chksum
+//
+//
+//	return UB_ACK;
+//}
+
