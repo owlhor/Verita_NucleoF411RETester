@@ -29,6 +29,8 @@
    *  - [USART1] -> Bootloader to client
    *  - [USART2] -> UART Terminal report to PC / read by Tera term, or any.
    *  - [USART6] -> Verita protocol [Master <-> Client]
+   *  - [TIM3] 	 -> QEI Rotary Encoder knob read
+   *  - [TIM10]  -> Buzzer trigger
    *
    * ================ pin GPIO Usage ===========
   */
@@ -74,6 +76,7 @@ I2C_HandleTypeDef hi2c1;
 
 SPI_HandleTypeDef hspi3;
 
+TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim10;
 
 UART_HandleTypeDef huart1;
@@ -121,9 +124,9 @@ struct _mcp_read{
 	float cv[4];
 }mcp_read;
 //// -------------- Timestamp ---------------------------
-uint32_t timestamp_one = 0;
-uint32_t timestamp_buzbtn = 0; // in while
-uint32_t timestamp_bz = 0;     // for buzzer function only
+uint64_t timestamp_one = 0;
+uint64_t timestamp_buzbtn = 0; // in while
+uint64_t timestamp_bz = 0;     // for buzzer function only
 
 uint32_t _millis = 0;
 //// --------------- Grandstate & flags & buttons------------------
@@ -132,11 +135,57 @@ uint8_t btn_read[4] = {0}; // use Btn 3 as last process val
 uint16_t btn_cnt = 0;
 uint8_t counter = 0;
 
-static enum{init, lobby, s_bootloader}GrandState = lobby;
+uint16_t knobtick[2] = {0}; //// store val fron TIM QEI
+uint8_t btn_K[2] = {0}; //// encoder knob btn
+uint8_t btn_k_cnt = 0;
+
+typedef enum{
+	k_zero = 0x00U,
+	k_up,
+	k_down
+} flag_k;
+uint8_t flag_k_up = 0;
+uint8_t flag_k_dn = 0;
+
+static enum{
+	init,
+	pre_lobby,
+	lobby,
+	s_bootloader,
+	pre_monitor,
+	monitor
+
+}GrandState = pre_lobby;
 //// buzzer time period
 uint16_t bzz_t_priod_up = 250;
 uint16_t bzz_t_priod_dn = 100;
 
+//// ----------- Display buffer ------------
+typedef struct {
+	uint16_t xp; // x axis start point
+	uint16_t yp; // y axis start point
+	uint16_t xsi; // x axis range
+	uint16_t ysi; // y axis range
+}disp_posixy;
+
+uint8_t bois_xi = 0;
+uint8_t bois_yi = 0;
+uint16_t bosx[8] ={0, 40, 80, 120, 160};
+
+uint16_t bosy[6] ={220, 60, 90, 120, 150};
+
+uint8_t state_box_choice_n = 4;
+//// can it be an array of specific position?
+//uint8_t st_boxchoice_lobby[3] = {1,2,3,4};
+
+int8_t state_box_choice_is = 1;
+//static uint8_t an_boxpoint = 0;
+
+//static enum {st1, st1s, st2,st2s, st3,st3s, st4, st4s} disb_state = st1;
+static enum {a_wait, a_change, a_boxclr} a_boxpoint; //abd1, abd2, abd3, abd1s, abd2s, abd3s
+
+
+uint8_t flag_boxpoint_start = 0; // in case start function
 //// ________________________________________________________________
 /* USER CODE END PV */
 
@@ -150,13 +199,15 @@ static void MX_USART6_UART_Init(void);
 static void MX_SPI3_Init(void);
 static void MX_TIM10_Init(void);
 static void MX_USART1_UART_Init(void);
+static void MX_TIM3_Init(void);
 /* USER CODE BEGIN PFP */
 void running_box();
 void buzzer_scream_cnt();
 void Button_machine();
-void State_Script_1();
 void simple_scr();
 void GrandState_Verita();
+void box_pointer(uint16_t posx, uint16_t posy);
+void knob_rotter();
 //VRTPTC_StatusTypedef Rx_Verita_engine(uint8_t *Rxbffr, uint32_t *regisk);
 /* USER CODE END PFP */
 
@@ -200,16 +251,22 @@ int main(void)
   MX_SPI3_Init();
   MX_TIM10_Init();
   MX_USART1_UART_Init();
+  MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
 
+  /// Timers Start
   HAL_TIM_Base_Start_IT(&htim10); // buzzer timer
+  HAL_TIM_Encoder_Start(&htim3, TIM_CHANNEL_1 | TIM_CHANNEL_2);
+  TIM3->CNT = 0x8000; //// start QEI counter from the center
+  knobtick[0] = TIM3->CNT;
 
   ili9341_Init();
   ili9341_DisplayOn();
 
-  ili9341_FillRect(50, 20, 50, 20, cl_RED);
-  ili9341_FillRect(100, 20, 50, 20, cl_GREEN);
-  ili9341_FillRect(150, 20, 50, 20, cl_BLUE);
+//  ili9341_FillRect(50, 20, 50, 20, cl_RED);
+//  ili9341_FillRect(100, 20, 50, 20, cl_GREEN);
+//  ili9341_FillRect(150, 20, 50, 20, cl_BLUE);
+
 
 #ifdef INA219_Wrk
   INA219_INIT_Calibrate(&hi2c1, INA219_ADDR_1);
@@ -257,15 +314,105 @@ int main(void)
 
 
 	  if (HAL_GetTick() >= timestamp_buzbtn){
-		timestamp_buzbtn += 10;
+		timestamp_buzbtn += 200;
 
-		running_box();
-		//buzzer_scream_cnt();
+		knob_rotter();
+
+		//running_box();
+
+		//// box pointer try
+		/* function runs here with speed
+		 * can change the number of selection following to the GrandState
+		 * state_box_choice = 3;
+		*/
+
+		if(state_box_choice_n){
+
+		switch (a_boxpoint){
+
+		default:
+		case a_wait:
+
+			if(flag_k_up){
+
+				state_box_choice_is++;
+				//state_box_choice_is %= state_box_choice_n; // don't be more than spec of Grandstate sub
+				if(state_box_choice_is >= state_box_choice_n){state_box_choice_is = 0;}
+
+				 flag_k_up = 0;
+				 a_boxpoint = a_change;}
+			if(flag_k_dn){
+
+				state_box_choice_is--;
+				if(state_box_choice_is < 0){state_box_choice_is = state_box_choice_n - 1;}
+				//state_box_choice_is = (state_box_choice_is < 0) ? state_box_choice_n-1:state_box_choice_is;
+				 flag_k_dn = 0;
+				 a_boxpoint = a_change;}
+
+			break;
+
+		case a_change:
+
+			box_pointer(20, bosy[state_box_choice_is]);
+			a_boxpoint = a_wait;
+			break;
+
+		case a_boxclr:
+
+			break;
+
+			}
+		}
+ /////////////////////////////////////////////////////////////////////
+//		  switch (disb_state){
+//		  default:
+//		  case st1:
+//
+//			  if(flag_k_up){disb_state = st2s; flag_k_up--;}
+//			  if(flag_k_dn){disb_state = st4s; flag_k_dn--;}
+//			  break;
+//		  case st2:
+//
+//			  if(flag_k_up){ disb_state = st3s; flag_k_up--;}
+//			  if(flag_k_dn){ disb_state = st1s; flag_k_dn--;}
+//			  break;
+//		  case st3:
+//
+//			  if(flag_k_up){ disb_state = st4s; flag_k_up--;}
+//			  if(flag_k_dn){disb_state = st2s; flag_k_dn--;}
+//			  break;
+//
+//		  case st4:
+//
+//			  if(flag_k_up){ disb_state = st1s; flag_k_up--;}
+//			  if(flag_k_dn){ disb_state = st3s; flag_k_dn--;}
+//			  break;
+//
+//
+//		  case st1s:
+//		  		box_pointer(20, 60);
+//		  		disb_state = st1;
+//		  	 break;
+//		  case st2s:
+//				box_pointer(20, 90);
+//				disb_state = st2;
+//			 break;
+//		  case st3s:
+//				box_pointer(20, 120);
+//				disb_state = st3;
+//			 break;
+//		  case st4s:
+//				box_pointer(20, 150);
+//				disb_state = st4;
+//			 break;
+//		  }
+
+
 	  }// timestamp_dis
 
 
 	  if (HAL_GetTick() >= timestamp_one){
-		  timestamp_one += 1000;
+		  timestamp_one += 500;
 		  HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
 
 		  GrandState_Verita();
@@ -391,6 +538,55 @@ static void MX_SPI3_Init(void)
   /* USER CODE BEGIN SPI3_Init 2 */
 
   /* USER CODE END SPI3_Init 2 */
+
+}
+
+/**
+  * @brief TIM3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM3_Init(void)
+{
+
+  /* USER CODE BEGIN TIM3_Init 0 */
+
+  /* USER CODE END TIM3_Init 0 */
+
+  TIM_Encoder_InitTypeDef sConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM3_Init 1 */
+
+  /* USER CODE END TIM3_Init 1 */
+  htim3.Instance = TIM3;
+  htim3.Init.Prescaler = 1;
+  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim3.Init.Period = 65535;
+  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
+  sConfig.EncoderMode = TIM_ENCODERMODE_TI12;
+  sConfig.IC1Polarity = TIM_ICPOLARITY_FALLING;
+  sConfig.IC1Selection = TIM_ICSELECTION_DIRECTTI;
+  sConfig.IC1Prescaler = TIM_ICPSC_DIV2;
+  sConfig.IC1Filter = 8;
+  sConfig.IC2Polarity = TIM_ICPOLARITY_FALLING;
+  sConfig.IC2Selection = TIM_ICSELECTION_DIRECTTI;
+  sConfig.IC2Prescaler = TIM_ICPSC_DIV2;
+  sConfig.IC2Filter = 8;
+  if (HAL_TIM_Encoder_Init(&htim3, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM3_Init 2 */
+
+  /* USER CODE END TIM3_Init 2 */
 
 }
 
@@ -622,6 +818,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(SPI3_CS_GPIO_Port, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : KnobBTN_Pin */
+  GPIO_InitStruct.Pin = KnobBTN_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(KnobBTN_GPIO_Port, &GPIO_InitStruct);
+
   /* EXTI interrupt init*/
   HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
@@ -644,6 +846,26 @@ void running_box(){
 	  xsh = 0;
 		  }
 
+}
+
+void box_pointer(uint16_t posx, uint16_t posy){
+	/* write new box at the new position posx posy and erase the previous box*/
+	static disp_posixy box1;
+
+	//// erase previous box
+	if(flag_boxpoint_start){
+
+		ili9341_FillRect(box1.xp, box1.yp, 15, 15, cl_BLACK);
+	}
+
+	//// new box
+	ili9341_FillRect(posx, posy, 15, 15, cl_YELLOW);
+
+	//box[1] = box[0];
+	box1.xp = posx;
+	box1.yp = posy;
+	//// trig the upper to erase the previous in the next call
+	flag_boxpoint_start = 1;
 }
 
 void simple_scr(){
@@ -679,8 +901,17 @@ void simple_scr(){
 	  sprintf(TextDispBuffer,"MCP : %.2f  ", mcp_read.cv[0]);
 	  ili9341_WriteString(20, 145, TextDispBuffer, Font16, cl_CYAN, cl_BLACK);
 
+	  ////// 4x button
 	  sprintf(TextDispBuffer,"btn %X %X %d",btn_read[1], btn_read[2], btn_cnt);
 	  ili9341_WriteString(170, 50, TextDispBuffer, Font16, cl_YELLOW, cl_BLACK);
+
+	  //// rortary encoder knob
+	  sprintf(TextDispBuffer,"enc %d %d %d", knobtick[0], btn_k_cnt, flag_k_up);
+	  ili9341_WriteString(170, 90, TextDispBuffer, Font16, cl_WHITE, cl_BLACK);
+
+	  sprintf(TextDispBuffer, "%ld, %d", TIM3->CNT, state_box_choice_is);
+	  ili9341_WriteString(190, 110, TextDispBuffer, Font16, cl_WHITE, cl_BLACK);
+
 
 }
 
@@ -703,7 +934,7 @@ void Button_machine(){
 //			counter_btn_deb = 0;
 //		}
 
-	/*btn_read{
+	/* 4x btn_read{
 	 * raw read,
 	 * read from 1 as rising detect,
 	 * read latest (bdebug),
@@ -719,6 +950,38 @@ void Button_machine(){
 			btn_read[3] = btn_read[0]; //// read latest, clearable
 		}
 
+		//// Rotary Encoder knob Button----------------------------------
+		btn_K[1] = btn_K[0];
+		btn_K[0] = HAL_GPIO_ReadPin(KnobBTN_GPIO_Port, KnobBTN_Pin);
+
+		if(btn_K[0] == 0 && btn_K[1]){
+			btn_k_cnt++;
+		}
+
+//		knob_rotter();
+
+		if(knobtick[0] <= 16 || knobtick[0] >= 0xFFF8){
+			TIM3->CNT = 0x8000; // back to center
+			knobtick[0] = 0x8000;
+		}
+
+
+}
+
+void knob_rotter(){
+	//// round up
+	if((uint16_t)TIM3->CNT > knobtick[0]){  ////(uint16_t)TIM3->CNT - knobtick[0] >= 2
+		flag_k_up = 1;
+		knobtick[0] = TIM3->CNT;
+
+	}
+	//// round down
+	else if((uint16_t)TIM3->CNT < knobtick[0]){ ////knobtick[0] - (uint16_t)TIM3->CNT >= 2
+		flag_k_dn = 1;
+		knobtick[0] = TIM3->CNT;
+
+	}
+	else{}
 
 }
 
@@ -777,20 +1040,82 @@ void buzzer_scream_cnt(){
 
 }
 
-void State_Script_1(){
-
-}
 
 void GrandState_Verita(){
 
-
 	switch(GrandState){
+
+	case pre_lobby:
+		state_box_choice_n = 4;
+		ili9341_FillRect(0, 0, 320, 240, cl_BLACK);
+
+		ili9341_FillRect(300, 0, 20, 240, cl_ORANGE);
+		ili9341_FillRect(0, 0, 10, 10, cl_ORANGE);
+
+		sprintf(TextDispBuffer,"Verita: Nucleo-F411RE Tester");
+		ili9341_WriteStringNoBG(10, 10, TextDispBuffer, Font20, cl_WHITE);
+
+		sprintf(TextDispBuffer,"Full Script");
+		ili9341_WriteStringNoBG(50, 60, TextDispBuffer, Font16, cl_CYAN);
+
+		sprintf(TextDispBuffer,"PWR_Monitor");
+		ili9341_WriteStringNoBG(50, 90, TextDispBuffer, Font16, cl_CYAN);
+
+		sprintf(TextDispBuffer,"Analog, coming soon");
+		ili9341_WriteStringNoBG(50, 120, TextDispBuffer, Font16, cl_CYAN);
+
+		box_pointer(20, bosy[state_box_choice_is]);
+
+		GrandState = lobby;
+		break;
+
 	default:
 	case lobby:
-		simple_scr();
+		state_box_choice_n = 4;
+
+		// debug
+		sprintf(TextDispBuffer, "%ld, %d", TIM3->CNT, state_box_choice_is);
+		ili9341_WriteString(120, 150, TextDispBuffer, Font16, cl_WHITE, cl_BLACK);
+		//simple_scr();
+		if(btn_k_cnt){
+
+			if (state_box_choice_is == 2){GrandState = pre_monitor;}
+
+		btn_k_cnt = 0;
+		}
+
+//		switch(a_boxpoint_lobby){
+//
+//		case abd1s:
+//			box_pointer(20, 60); a_boxpoint_lobby= abd1; break;
+//		case abd2s:
+//			box_pointer(20, 90); a_boxpoint_lobby = abd1; break;
+//		case abd3s:
+//			box_pointer(20, 120); a_boxpoint_lobby = abd1; break;
+//
+//		default:
+//		case abd1:
+//
+//		  if(flag_k_up){a_boxpoint_lobby = abd2s; flag_k_up--;}
+//		  if(flag_k_dn){a_boxpoint_lobby = abd3s; flag_k_dn--;}
+//		  break;
+//		case abd2:
+//
+//		  if(flag_k_up){a_boxpoint_lobby = abd3s; flag_k_up--;}
+//		  if(flag_k_dn){a_boxpoint_lobby = abd1s; flag_k_dn--;}
+//		  break;
+//		case abd3:
+//
+//		  if(flag_k_up){a_boxpoint_lobby = abd1s; flag_k_up--;}
+//		  if(flag_k_dn){a_boxpoint_lobby = abd2s; flag_k_dn--;}
+//		  break;
+//
+//		}
+
 		break; // lobby
 
 	case init:
+		state_box_choice_n = 0;
 
 //		//// test write bootloader
 //		// find n times must be loop to upload all code
@@ -813,6 +1138,7 @@ void GrandState_Verita(){
 		break;
 
 	case s_bootloader:
+		state_box_choice_n = 0;
 
 		//// find n times must be loop to upload all code
 		bootloop_n = (boot_size / 256) + ((boot_size % 256)>0 ? 1:0);
@@ -838,6 +1164,26 @@ void GrandState_Verita(){
 		GrandState = lobby;
 
 		break;
+
+	case pre_monitor:
+		state_box_choice_n = 0;
+		ili9341_FillRect(0, 0, 320, 240, cl_BLACK);
+		ili9341_FillRect(0, 0, 10, 10, cl_ORANGE);
+
+		sprintf(TextDispBuffer,"<-Back (Knob press)");
+		ili9341_WriteStringNoBG(60, 220, TextDispBuffer, Font16, cl_WHITE);
+		GrandState = monitor;
+		break;
+
+	case monitor:
+		state_box_choice_n = 1;
+		simple_scr();
+
+		if(btn_k_cnt){
+			GrandState = pre_lobby;
+			btn_k_cnt = 0;
+			}
+		break;
 	}
 }
 
@@ -848,7 +1194,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 		buzzer_scream_cnt();
 
 		//// bootloader test
-		GrandState = s_bootloader;
+		//GrandState = s_bootloader;
 		//GrandState = init;
 		}
 }

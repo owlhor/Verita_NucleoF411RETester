@@ -100,6 +100,8 @@ void Error_Handler(void);
 #define SPI3_CS_GPIO_Port GPIOD
 #define SWO_Pin GPIO_PIN_3
 #define SWO_GPIO_Port GPIOB
+#define KnobBTN_Pin GPIO_PIN_6
+#define KnobBTN_GPIO_Port GPIOB
 /* USER CODE BEGIN Private defines */
 
 /* USER CODE END Private defines */

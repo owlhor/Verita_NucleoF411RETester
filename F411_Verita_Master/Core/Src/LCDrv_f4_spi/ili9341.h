@@ -80,7 +80,7 @@ extern   LTDC_HandleTypeDef       hltdc;
 #define cl_MAGENTA     0xF81F
 #define cl_YELLOW      0xFFE0
 #define cl_WHITE       0xFFFF
-#define cl_ORANGE      0xFD20
+#define cl_ORANGE      0xF9A0 //0xFD20
 #define cl_GREENYELLOW 0xAFE5
 #define cl_PINK        0xF81F
 
