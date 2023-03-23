@@ -88,6 +88,8 @@ void Error_Handler(void);
 #define Btn_4_GPIO_Port GPIOB
 #define client_NRST_Pin GPIO_PIN_6
 #define client_NRST_GPIO_Port GPIOC
+#define RelayClient_Pin GPIO_PIN_8
+#define RelayClient_GPIO_Port GPIOC
 #define Buzzer_Pin GPIO_PIN_9
 #define Buzzer_GPIO_Port GPIOC
 #define boot0_trigger_Pin GPIO_PIN_8

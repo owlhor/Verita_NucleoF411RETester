@@ -64,6 +64,7 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define INA219_Wrk
+#define Current_limit_mA 1100
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -118,47 +119,64 @@ INA219_Read_Set inata; // read first point
 INA219_Read_Set inatb; // read second point
 INA219_Conf_Strc cofgra;
 
-//// ---------------- MCP3208 ------------------------
+//// ---------------- MCP3208 ---------------------------
 struct _mcp_read{
-	uint16_t raw[4];
-	float cv[4];
+	uint16_t raw[8];
+	float cv[8];
 }mcp_read;
-//// -------------- Timestamp ---------------------------
+//// -------------- Timestamp ------------------------------
 uint64_t timestamp_one = 0;
+uint64_t timestamp_sensors = 0;
 uint64_t timestamp_buzbtn = 0; // in while
-uint64_t timestamp_bz = 0;     // for buzzer function only
+//uint32_t timestamp_bz = 0;     // for buzzer function only
 
 uint32_t _millis = 0;
-//// --------------- Grandstate & flags & buttons------------------
+//// ------------------- Grandstate & flags & buttons--------------------------
 uint8_t flagc_bz = 0; // flag counter for buzzer
-uint8_t btn_read[4] = {0}; // use Btn 3 as last process val
+uint8_t flag_manual_relay = 0;
+
+struct _bzzr{
+	uint8_t flag; // flag counter for buzzer
+	uint16_t priod_up;
+	uint16_t priod_dn;
+	uint32_t timestamp;
+}buzzr;
+
+//// 4x button
+uint8_t btn_read[4] = {0}; // use Btn_read[3] as last process val
 uint16_t btn_cnt = 0;
 uint8_t counter = 0;
 
+//// Rotary encoder knob button
 uint16_t knobtick[2] = {0}; //// store val fron TIM QEI
-uint8_t btn_K[2] = {0}; //// encoder knob btn
+uint8_t btn_K[2] = {0};  //// encoder knob btn edge detect
 uint8_t btn_k_cnt = 0;
 
-typedef enum{
-	k_zero = 0x00U,
-	k_up,
-	k_down
-} flag_k;
+//// Rotary encoder rotor
+//typedef enum{
+//	k_zero = 0x00U,
+//	k_up,
+//	k_down
+//} flag_k;
 uint8_t flag_k_up = 0;
 uint8_t flag_k_dn = 0;
+
+struct{
+	uint8_t up;
+	uint8_t dn;
+} k_flag;
 
 static enum{
 	init,
 	pre_lobby,
 	lobby,
+	pre_bootloader,
 	s_bootloader,
 	pre_monitor,
 	monitor
 
 }GrandState = pre_lobby;
-//// buzzer time period
-uint16_t bzz_t_priod_up = 250;
-uint16_t bzz_t_priod_dn = 100;
+
 
 //// ----------- Display buffer ------------
 typedef struct {
@@ -167,6 +185,8 @@ typedef struct {
 	uint16_t xsi; // x axis range
 	uint16_t ysi; // y axis range
 }disp_posixy;
+
+uint8_t flag_boxpoint_start = 0; // in case start function
 
 uint8_t bois_xi = 0;
 uint8_t bois_yi = 0;
@@ -177,15 +197,12 @@ uint16_t bosy[6] ={220, 60, 90, 120, 150};
 uint8_t state_box_choice_n = 4;
 //// can it be an array of specific position?
 //uint8_t st_boxchoice_lobby[3] = {1,2,3,4};
-
 int8_t state_box_choice_is = 1;
-//static uint8_t an_boxpoint = 0;
+
 
 //static enum {st1, st1s, st2,st2s, st3,st3s, st4, st4s} disb_state = st1;
 static enum {a_wait, a_change, a_boxclr} a_boxpoint; //abd1, abd2, abd3, abd1s, abd2s, abd3s
 
-
-uint8_t flag_boxpoint_start = 0; // in case start function
 //// ________________________________________________________________
 /* USER CODE END PV */
 
@@ -208,6 +225,8 @@ void simple_scr();
 void GrandState_Verita();
 void box_pointer(uint16_t posx, uint16_t posy);
 void knob_rotter();
+void Protection_machine();
+void manual_relay();
 //VRTPTC_StatusTypedef Rx_Verita_engine(uint8_t *Rxbffr, uint32_t *regisk);
 /* USER CODE END PFP */
 
@@ -257,8 +276,14 @@ int main(void)
   /// Timers Start
   HAL_TIM_Base_Start_IT(&htim10); // buzzer timer
   HAL_TIM_Encoder_Start(&htim3, TIM_CHANNEL_1 | TIM_CHANNEL_2);
-  TIM3->CNT = 0x8000; //// start QEI counter from the center
+  //// start QEI counter from the center 32768
+  TIM3->CNT = 0x8000;
   knobtick[0] = TIM3->CNT;
+
+  //// buzzer raram setting
+  buzzr.flag = 1;
+  buzzr.priod_up = 250;
+  buzzr.priod_dn = 100;
 
   ili9341_Init();
   ili9341_DisplayOn();
@@ -270,6 +295,7 @@ int main(void)
 
 #ifdef INA219_Wrk
   INA219_INIT_Calibrate(&hi2c1, INA219_ADDR_1);
+  INA219_INIT_Calibrate(&hi2c1, INA219_ADDR_2);
 //  cofgra.INA219CF.reset = 0;
 //  cofgra.INA219CF.BRNG = BRNG_FSR_16V;
 //  cofgra.INA219CF.PGA = PGA_GainD8_320mv;
@@ -288,11 +314,6 @@ int main(void)
 ////  ------------- UART Recieve --------------------------
   HAL_UART_Receive_DMA(&huart6, &RxBufferMtCl[0], RxbufferSize_VRT);
 
-  //// for storage test only
-//  uint32_t flashboot[3000];
-//  for(register int i = 0; i < 3000 ;i++){
-//	  flashboot[i] = F411_Verita_Client[i];
-//  }
 
   /* USER CODE END 2 */
 
@@ -314,7 +335,7 @@ int main(void)
 
 
 	  if (HAL_GetTick() >= timestamp_buzbtn){
-		timestamp_buzbtn += 200;
+		timestamp_buzbtn += 100;
 
 		knob_rotter();
 
@@ -336,16 +357,17 @@ int main(void)
 			if(flag_k_up){
 
 				state_box_choice_is++;
-				//state_box_choice_is %= state_box_choice_n; // don't be more than spec of Grandstate sub
-				if(state_box_choice_is >= state_box_choice_n){state_box_choice_is = 0;}
+				state_box_choice_is %= state_box_choice_n; // don't be more than spec of Grandstate sub
+				//if(state_box_choice_is >= state_box_choice_n){state_box_choice_is = 0;}
 
 				 flag_k_up = 0;
 				 a_boxpoint = a_change;}
 			if(flag_k_dn){
 
 				state_box_choice_is--;
-				if(state_box_choice_is < 0){state_box_choice_is = state_box_choice_n - 1;}
-				//state_box_choice_is = (state_box_choice_is < 0) ? state_box_choice_n-1:state_box_choice_is;
+				state_box_choice_is = (state_box_choice_is < 0) ? state_box_choice_n-1:state_box_choice_is;
+				//if(state_box_choice_is < 0){state_box_choice_is = state_box_choice_n - 1;}
+
 				 flag_k_dn = 0;
 				 a_boxpoint = a_change;}
 
@@ -418,6 +440,36 @@ int main(void)
 		  GrandState_Verita();
 
 		  } // timestamp_one
+
+	  if(HAL_GetTick() >= timestamp_sensors + 250){
+		  timestamp_sensors = HAL_GetTick(); // in case this func is temporary terminate, can continue
+
+		  inata.Bus_V   = INA219Read_BusV(&hi2c1, INA219_ADDR_1);
+		  inata.CURRENT = INA219Read_Current(&hi2c1, INA219_ADDR_1);
+		  inata.POWER   = INA219Read_Power(&hi2c1, INA219_ADDR_1);
+		  inata.SHUNT_V = INA219Read_ShuntV(&hi2c1, INA219_ADDR_1);
+
+		  inatb.Bus_V   = INA219Read_BusV(&hi2c1, INA219_ADDR_2);
+		  inatb.CURRENT = INA219Read_Current(&hi2c1, INA219_ADDR_2);
+		  inatb.POWER   = INA219Read_Power(&hi2c1, INA219_ADDR_2);
+		  inatb.SHUNT_V = INA219Read_ShuntV(&hi2c1, INA219_ADDR_2);
+
+		  mcp_read.raw[0] = MCP3208_READ_8_DataSPI(&hspi3, M8_CH0);
+		  mcp_read.raw[1] = MCP3208_READ_8_DataSPI(&hspi3, M8_CH1);
+		  mcp_read.raw[2] = MCP3208_READ_8_DataSPI(&hspi3, M8_CH2);
+		  mcp_read.raw[3] = MCP3208_READ_8_DataSPI(&hspi3, M8_CH3);
+		  mcp_read.raw[4] = MCP3208_READ_8_DataSPI(&hspi3, M8_CH4);
+		  mcp_read.raw[5] = MCP3208_READ_8_DataSPI(&hspi3, M8_CH5);
+		  mcp_read.raw[6] = MCP3208_READ_8_DataSPI(&hspi3, M8_CH6);
+		  mcp_read.raw[7] = MCP3208_READ_8_DataSPI(&hspi3, M8_CH7);
+
+		  for(register int i = 0;i < 7;i++){
+			  mcp_read.cv[i] = MCP320x_ADCbit_to_Volt(mcp_read.raw[i]);
+		  }
+
+		  //Protection_machine();
+		  manual_relay();
+	  }
 
 	  }
   /* USER CODE END 3 */
@@ -754,7 +806,7 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOC, LCD_RS_Pin|LCD_CS_Pin|LCD_MOSI_Pin|client_NRST_Pin
-                          |Buzzer_Pin, GPIO_PIN_RESET);
+                          |RelayClient_Pin|Buzzer_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOA, LCD_RST_Pin|LD2_Pin|boot0_trigger_Pin, GPIO_PIN_RESET);
@@ -771,8 +823,10 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : LCD_RS_Pin LCD_CS_Pin client_NRST_Pin Buzzer_Pin */
-  GPIO_InitStruct.Pin = LCD_RS_Pin|LCD_CS_Pin|client_NRST_Pin|Buzzer_Pin;
+  /*Configure GPIO pins : LCD_RS_Pin LCD_CS_Pin client_NRST_Pin RelayClient_Pin
+                           Buzzer_Pin */
+  GPIO_InitStruct.Pin = LCD_RS_Pin|LCD_CS_Pin|client_NRST_Pin|RelayClient_Pin
+                          |Buzzer_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -811,6 +865,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : PC7 */
+  GPIO_InitStruct.Pin = GPIO_PIN_7;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
   /*Configure GPIO pin : SPI3_CS_Pin */
   GPIO_InitStruct.Pin = SPI3_CS_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
@@ -825,6 +885,9 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(KnobBTN_GPIO_Port, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
+
   HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 
@@ -875,42 +938,42 @@ void simple_scr(){
 	  //INATT.U16[1] = INA219Read_cx(&hi2c1, INA219_ADDR_1, INA219_RG_Config);
 	  //INATT.U16[2] = INA219Read_cx(&hi2c1, INA219_ADDR_1, INA219_RG_Current);
 
-	  inata.Bus_V   = INA219Read_BusV(&hi2c1, INA219_ADDR_1);
-	  inata.CURRENT = INA219Read_Current(&hi2c1, INA219_ADDR_1);
-	  inata.POWER   = INA219Read_Power(&hi2c1, INA219_ADDR_1);
-	  inata.SHUNT_V = INA219Read_ShuntV(&hi2c1, INA219_ADDR_1);
+//	  inata.Bus_V   = INA219Read_BusV(&hi2c1, INA219_ADDR_1);
+//	  inata.CURRENT = INA219Read_Current(&hi2c1, INA219_ADDR_1);
+//	  inata.POWER   = INA219Read_Power(&hi2c1, INA219_ADDR_1);
+//	  inata.SHUNT_V = INA219Read_ShuntV(&hi2c1, INA219_ADDR_1);
+//
+//	  inata.Calibra =  INA219Read_cx(&hi2c1, INA219_ADDR_1, INA219_RG_Calibra);
+//	  inata.Config = INA219Read_cx(&hi2c1, INA219_ADDR_1, INA219_RG_Config);
 
-	  inata.Calibra =  INA219Read_cx(&hi2c1, INA219_ADDR_1, INA219_RG_Calibra);
-	  inata.Config = INA219Read_cx(&hi2c1, INA219_ADDR_1, INA219_RG_Config);
-
-	  sprintf(TextDispBuffer,"calibrator:%4X", inata.Calibra);
-	  ili9341_WriteString(20, 50, TextDispBuffer, Font12, cl_GREENYELLOW, cl_BLACK);
-
-	  sprintf(TextDispBuffer,"V mV: %d    ", inata.Bus_V);
-	  ili9341_WriteString(20, 70, TextDispBuffer, Font16, cl_CYAN, cl_BLACK);
-
-	  sprintf(TextDispBuffer,"I mA: %d    ", inata.CURRENT);
-	  ili9341_WriteString(20, 95, TextDispBuffer, Font16, cl_CYAN, cl_BLACK);
-
-	  sprintf(TextDispBuffer,"P mW: %.2f  ", inata.POWER);
-	  ili9341_WriteString(20, 120, TextDispBuffer, Font16, cl_CYAN, cl_BLACK);
+//	  sprintf(TextDispBuffer,"calibrator:%4X", inata.Calibra);
+//	  ili9341_WriteString(20, 50, TextDispBuffer, Font12, cl_GREENYELLOW, cl_BLACK);
+//
+//	  sprintf(TextDispBuffer,"V mV: %d    ", inata.Bus_V);
+//	  ili9341_WriteString(20, 70, TextDispBuffer, Font16, cl_CYAN, cl_BLACK);
+//
+//	  sprintf(TextDispBuffer,"I mA: %d    ", inata.CURRENT);
+//	  ili9341_WriteString(20, 95, TextDispBuffer, Font16, cl_CYAN, cl_BLACK);
+//
+//	  sprintf(TextDispBuffer,"P mW: %.2f  ", inata.POWER);
+//	  ili9341_WriteString(20, 120, TextDispBuffer, Font16, cl_CYAN, cl_BLACK);
 #endif
 
-	  mcp_read.raw[0] = MCP3208_READ_8_DataSPI(&hspi3, M8_CH0);
-	  mcp_read.cv[0] = MCP320x_ADCbit_to_Volt(mcp_read.raw[0]);
-	  sprintf(TextDispBuffer,"MCP : %.2f  ", mcp_read.cv[0]);
-	  ili9341_WriteString(20, 145, TextDispBuffer, Font16, cl_CYAN, cl_BLACK);
+	  //mcp_read.raw[0] = MCP3208_READ_8_DataSPI(&hspi3, M8_CH0);
+	  //mcp_read.cv[0] = MCP320x_ADCbit_to_Volt(mcp_read.raw[0]);
+	  //sprintf(TextDispBuffer,"MCP : %.2f  ", mcp_read.cv[0]);
+	  //ili9341_WriteString(20, 155, TextDispBuffer, Font16, cl_CYAN, cl_BLACK);
 
 	  ////// 4x button
 	  sprintf(TextDispBuffer,"btn %X %X %d",btn_read[1], btn_read[2], btn_cnt);
-	  ili9341_WriteString(170, 50, TextDispBuffer, Font16, cl_YELLOW, cl_BLACK);
+	  ili9341_WriteString(170, 10, TextDispBuffer, Font16, cl_YELLOW, cl_BLACK);
 
 	  //// rortary encoder knob
 	  sprintf(TextDispBuffer,"enc %d %d %d", knobtick[0], btn_k_cnt, flag_k_up);
-	  ili9341_WriteString(170, 90, TextDispBuffer, Font16, cl_WHITE, cl_BLACK);
+	  ili9341_WriteString(170, 30, TextDispBuffer, Font16, cl_WHITE, cl_BLACK);
 
 	  sprintf(TextDispBuffer, "%ld, %d", TIM3->CNT, state_box_choice_is);
-	  ili9341_WriteString(190, 110, TextDispBuffer, Font16, cl_WHITE, cl_BLACK);
+	  ili9341_WriteString(190, 50, TextDispBuffer, Font16, cl_WHITE, cl_BLACK);
 
 
 }
@@ -934,11 +997,11 @@ void Button_machine(){
 //			counter_btn_deb = 0;
 //		}
 
-	/* 4x btn_read{
-	 * raw read,
-	 * read from 1 as rising detect,
-	 * read latest (bdebug),
-	 * read latest & erased when fin}
+	/* 4x btn_read[4]{
+	 * [0]raw read,
+	 * [1]read from 1 as rising detect,
+	 * [2]read latest (bdebug),
+	 * [3]read latest & erased when fin}
 	 */
 		btn_read[1] = btn_read[0];
 		btn_read[0] = (0x0F & ~(GPIOB->IDR >> 12)); //// available for PB 12 13 14 15 or which the same bank only
@@ -948,18 +1011,23 @@ void Button_machine(){
 			btn_cnt += btn_read[0]; //// plus at each hex pos
 			btn_read[2] = btn_read[0]; //// read latest, debug
 			btn_read[3] = btn_read[0]; //// read latest, clearable
+
+			//// manual relay flag try
+			flag_manual_relay = 1;
 		}
 
 		//// Rotary Encoder knob Button----------------------------------
-		btn_K[1] = btn_K[0];
-		btn_K[0] = HAL_GPIO_ReadPin(KnobBTN_GPIO_Port, KnobBTN_Pin);
-
-		if(btn_K[0] == 0 && btn_K[1]){
-			btn_k_cnt++;
-		}
+		// use NVIC GPIO_7 instead
+//		btn_K[1] = btn_K[0];
+//		btn_K[0] = HAL_GPIO_ReadPin(KnobBTN_GPIO_Port, KnobBTN_Pin);
+//
+//		if(btn_K[0] == 0 && btn_K[1]){
+//			btn_k_cnt++;
+//		}
 
 //		knob_rotter();
 
+		//// knob rotter overflow_resist
 		if(knobtick[0] <= 16 || knobtick[0] >= 0xFFF8){
 			TIM3->CNT = 0x8000; // back to center
 			knobtick[0] = 0x8000;
@@ -985,6 +1053,40 @@ void knob_rotter(){
 
 }
 
+void Protection_machine(){
+
+	static uint8_t counter_overcurrent = 0;
+
+	//// overcurrent
+	if (inata.CURRENT >= Current_limit_mA || inatb.CURRENT >= Current_limit_mA){
+		counter_overcurrent++;
+
+		if(counter_overcurrent >= 10){
+			counter_overcurrent = 0;
+			////Relay_cut
+			HAL_GPIO_WritePin(RelayClient_GPIO_Port, RelayClient_Pin, GPIO_PIN_RESET);
+			//// Buzzer scream
+			buzzer_scream_cnt();
+			buzzr.flag = 3;
+			//// interrupt, go to state Client error.
+		}
+	}else{counter_overcurrent = 0;}
+
+}
+
+void manual_relay(){
+	if(flag_manual_relay){
+
+		if(GrandState == monitor){
+
+			HAL_GPIO_TogglePin(RelayClient_GPIO_Port, RelayClient_Pin);
+
+		}
+
+		flag_manual_relay = 0;
+	}
+}
+
 void buzzer_scream_cnt(){
 	static enum {bz_init, bz_silent, bz_scream} bz_st = bz_init;
 	//uint16_t tup = 100, tdn = 50;
@@ -994,14 +1096,14 @@ void buzzer_scream_cnt(){
 		case bz_init:
 			//HAL_GPIO_WritePin(Buzzer_GPIO_Port, Buzzer_Pin, GPIO_PIN_RESET);
 
-			if(flagc_bz){
+			if(buzzr.flag){
 
 				HAL_TIM_Base_Start_IT(&htim10);
-				timestamp_bz = bzz_t_priod_up + HAL_GetTick(); //
+				buzzr.timestamp = buzzr.priod_up + HAL_GetTick();
 
 				bz_st = bz_scream;
 				/// down flag_counter every 1 scream
-				flagc_bz--;
+				buzzr.flag--;
 			}else{
 				HAL_TIM_Base_Stop_IT(&htim10);
 			}
@@ -1011,8 +1113,8 @@ void buzzer_scream_cnt(){
 		case bz_scream:
 			HAL_GPIO_WritePin(Buzzer_GPIO_Port, Buzzer_Pin, GPIO_PIN_SET);
 
-			if(HAL_GetTick() >= timestamp_bz){
-				timestamp_bz = bzz_t_priod_dn + HAL_GetTick();
+			if(HAL_GetTick() >= buzzr.timestamp){
+				buzzr.timestamp = buzzr.priod_dn + HAL_GetTick();
 
 				bz_st = bz_silent;
 			}
@@ -1022,12 +1124,12 @@ void buzzer_scream_cnt(){
 		case bz_silent:
 			HAL_GPIO_WritePin(Buzzer_GPIO_Port, Buzzer_Pin, GPIO_PIN_RESET);
 
-			if(HAL_GetTick() >= timestamp_bz){
+			if(HAL_GetTick() >= buzzr.timestamp){
 
-				if(flagc_bz){
-					timestamp_bz = bzz_t_priod_up + HAL_GetTick(); //
+				if(buzzr.flag){
+					buzzr.timestamp = buzzr.priod_up + HAL_GetTick();
 
-					flagc_bz--;
+					buzzr.flag--;
 					bz_st = bz_scream;
 
 				}else{
@@ -1084,34 +1186,6 @@ void GrandState_Verita(){
 		btn_k_cnt = 0;
 		}
 
-//		switch(a_boxpoint_lobby){
-//
-//		case abd1s:
-//			box_pointer(20, 60); a_boxpoint_lobby= abd1; break;
-//		case abd2s:
-//			box_pointer(20, 90); a_boxpoint_lobby = abd1; break;
-//		case abd3s:
-//			box_pointer(20, 120); a_boxpoint_lobby = abd1; break;
-//
-//		default:
-//		case abd1:
-//
-//		  if(flag_k_up){a_boxpoint_lobby = abd2s; flag_k_up--;}
-//		  if(flag_k_dn){a_boxpoint_lobby = abd3s; flag_k_dn--;}
-//		  break;
-//		case abd2:
-//
-//		  if(flag_k_up){a_boxpoint_lobby = abd3s; flag_k_up--;}
-//		  if(flag_k_dn){a_boxpoint_lobby = abd1s; flag_k_dn--;}
-//		  break;
-//		case abd3:
-//
-//		  if(flag_k_up){a_boxpoint_lobby = abd1s; flag_k_up--;}
-//		  if(flag_k_dn){a_boxpoint_lobby = abd2s; flag_k_dn--;}
-//		  break;
-//
-//		}
-
 		break; // lobby
 
 	case init:
@@ -1137,6 +1211,18 @@ void GrandState_Verita(){
 		GrandState = lobby;
 		break;
 
+	case pre_bootloader:
+		state_box_choice_n = 0;
+		ili9341_FillRect(0, 0, 320, 240, cl_BLACK);
+		ili9341_FillRect(0, 0, 10, 10, cl_PURPLE);
+
+		sprintf(TextDispBuffer,"Boot...");
+		ili9341_WriteStringNoBG(60, 120, TextDispBuffer, Font24, cl_WHITE);
+
+		btn_k_cnt = 0; //// prevent over state jump
+		GrandState = s_bootloader;
+		break;
+
 	case s_bootloader:
 		state_box_choice_n = 0;
 
@@ -1146,7 +1232,8 @@ void GrandState_Verita(){
 
 		BL_UART_Start(&huart1);
 
-		//// Flash Memory Erase ============, Erase1_Mass_CMD makes bootloader not response to ALL write CMD / dont know why
+		//// Flash Memory Erase ============,
+		//// Erase1_Mass_CMD makes bootloader not response to ALL write CMD / dont know why
 		BL_UART_ExtendEraseMem_SP(&huart1, Erase_Bank1_CMD);
 		BL_UART_ExtendEraseMem_SP(&huart1, Erase_Bank2_CMD);
 
@@ -1161,6 +1248,7 @@ void GrandState_Verita(){
 
 		BL_UART_Finish();
 
+		btn_k_cnt = 0; //// prevent over state jump
 		GrandState = lobby;
 
 		break;
@@ -1172,14 +1260,75 @@ void GrandState_Verita(){
 
 		sprintf(TextDispBuffer,"<-Back (Knob press)");
 		ili9341_WriteStringNoBG(60, 220, TextDispBuffer, Font16, cl_WHITE);
+
+		sprintf(TextDispBuffer,"calib:%4X", inata.Calibra);
+		ili9341_WriteString(20, 30, TextDispBuffer, Font12, cl_GREENYELLOW, cl_BLACK);
+
+		sprintf(TextDispBuffer,"V mV:");
+		ili9341_WriteString(20, 50, TextDispBuffer, Font20, cl_WHITE, cl_BLACK);
+
+		sprintf(TextDispBuffer,"I mA:");
+		ili9341_WriteString(20, 90, TextDispBuffer, Font20, cl_WHITE, cl_BLACK);
+
+		sprintf(TextDispBuffer,"P mW:");
+		ili9341_WriteString(20, 130, TextDispBuffer, Font20, cl_WHITE, cl_BLACK);
+
+		sprintf(TextDispBuffer,"MCP");
+		ili9341_WriteString(220, 80, TextDispBuffer, Font16, cl_WHITE, cl_BLACK);
+
+		btn_k_cnt = 0; //// prevent over state jump
 		GrandState = monitor;
 		break;
+
 
 	case monitor:
 		state_box_choice_n = 1;
 		simple_scr();
 
-		if(btn_k_cnt){
+		sprintf(TextDispBuffer,"%4d", inata.Bus_V);
+		if(inata.Bus_V < 2000){
+			ili9341_WriteString(100, 50, TextDispBuffer, Font16, cl_RED, cl_BLACK);
+		}else{
+			ili9341_WriteString(100, 50, TextDispBuffer, Font16, cl_GREEN, cl_BLACK);
+		}
+
+		sprintf(TextDispBuffer,"%4d", inatb.Bus_V);
+				if(inatb.Bus_V < 2000){
+					ili9341_WriteString(100, 70, TextDispBuffer, Font16, cl_RED, cl_BLACK);
+				}else{
+					ili9341_WriteString(100, 70, TextDispBuffer, Font16, cl_GREEN, cl_BLACK);
+				}
+
+		sprintf(TextDispBuffer,"%4d", inata.CURRENT);
+		ili9341_WriteString(100, 90, TextDispBuffer, Font16, cl_CYAN, cl_BLACK);
+		sprintf(TextDispBuffer,"%4d", inatb.CURRENT);
+		ili9341_WriteString(100, 110, TextDispBuffer, Font16, cl_CYAN, cl_BLACK);
+
+		sprintf(TextDispBuffer,"%.2f", inata.POWER);
+		ili9341_WriteString(100, 130, TextDispBuffer, Font16, cl_ORANGE, cl_BLACK);
+		sprintf(TextDispBuffer,"%.2f", inatb.POWER);
+		ili9341_WriteString(100, 150, TextDispBuffer, Font16, cl_ORANGE, cl_BLACK);
+
+//		sprintf(TextDispBuffer,"%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n",
+//				mcp_read.raw[0],mcp_read.raw[1],
+//				mcp_read.raw[2],mcp_read.raw[3],
+//				mcp_read.raw[4],mcp_read.raw[5],
+//				mcp_read.raw[6],mcp_read.raw[7]);
+//		ili9341_FillRect(110, 50, 30, 110, cl_BLACK);
+//		ili9341_WriteStringNoBG(110, 50, TextDispBuffer, Font12, cl_YELLOW);
+
+
+		ili9341_FillRect(220, 100, 30, 90, cl_BLACK);
+		for(register int t = 0; t < 7; t++){
+			sprintf(TextDispBuffer,"%d",mcp_read.raw[t]);
+		ili9341_WriteStringNoBG(220, 100 + (12*t), TextDispBuffer, Font12, cl_YELLOW);
+		}
+
+
+
+
+
+		if(btn_k_cnt){ //// Back to lobby
 			GrandState = pre_lobby;
 			btn_k_cnt = 0;
 			}
@@ -1191,25 +1340,30 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 	if(GPIO_Pin == GPIO_PIN_13){
 		//INA219_BitReset(&hi2c1, INA219_ADDR_1);
 		flagc_bz = 12;
+		buzzr.flag = 12;
 		buzzer_scream_cnt();
-
 		//// bootloader test
 		//GrandState = s_bootloader;
 		//GrandState = init;
 		}
+
+	if(GPIO_Pin == GPIO_PIN_7){
+		btn_k_cnt++;
+	}
 }
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
 	if(htim == &htim10){
 		_millis++;
+		//// Timer interrupt
 		buzzer_scream_cnt();
 	}
 }
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
-	counter++;
+	//counter++;
 }
 
 

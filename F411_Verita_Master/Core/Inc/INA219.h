@@ -31,9 +31,9 @@
 
 //////// Device Address ---------------------------------------------
 #define INA219_ADDR_1 0b10000000 // 1000000
-#define INA219_ADDR_2 0b10000010 // 1000001
-#define INA219_ADDR_3 0b10000100 // 1000010
-#define INA219_ADDR_4 0b10000110 // 1000011
+#define INA219_ADDR_2 0b10001000 // 1000100
+//#define INA219_ADDR_3 0b10000100 // 1000010
+//#define INA219_ADDR_4 0b10000110 // 1000011
 
 //// Register Address ---------------------------------------------
 #define INA219_RG_Config	0x00

@@ -69,7 +69,11 @@ typedef union _Verita_Register_Bank
 		// 0x12
 		uint32_t FirmwareVer;
 
-		uint32_t rsv3[7];
+		// 0x13
+		uint16_t flag_dataREQ;
+		uint16_t DataReq;
+
+		//uint32_t rsv3[6];
 
 	} Mark;
 

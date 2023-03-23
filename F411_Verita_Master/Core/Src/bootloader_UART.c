@@ -294,7 +294,7 @@ UARTBootloader_state BL_UART_WriteMem(UART_HandleTypeDef *huart,uint32_t addr32,
 	 * @param numbyte - num of bytes need to write (0 < n <= 255)
 	 * @param wdatum  - write data bytes
 	 *
-	 * - 16 Mar 23 - *** To write all new datas to the target, Mass erased is required ***
+	 * - 16 Mar 23 - *** To write all new data to the target, Mass erased is required ***
 	 *
 	 *
 	 * - gets a byte, N, which contains the number of data bytes to be received
