@@ -90,7 +90,7 @@ DMA_HandleTypeDef hdma_usart6_rx;
 //// --------------------UART Buffer -------------------
 char TextDispBuffer[100] = {0}; // Display Text
 char TextUARTBuffer[100] = {0}; // UART Console Text
-uint8_t RxBufferMtCl[RxbufferSize_VRT] = {0}; // Recieved packet buffer
+
 
 //// ------- UART Bootloader ---------------
 uint8_t bootloop_n = 0;
@@ -102,13 +102,12 @@ uint8_t BL_MemBuffer[260] = {0};
 //// ---------- Verita Register -------------------------
 
 VRTPTC_StatusTypedef engst; // return engine state
-
 //uint8_t flag_vrt_en = 0;
 //// = = = = = register bank = = = = = = = =
-uint32_t verita_regis[16] = {0};
-Verita_Register_Bank VRB;
-
-
+//uint32_t verita_regis[16] = {0};
+Verita_Register_Bank VRB_CL;
+uint8_t RxBufferMtCl[RxbufferSize_VRT] = {0}; // Recieved packet buffer
+float client_temp_mcuCC;
 //// --------- INA219 ------------------------------------
 union {
 	uint8_t U8[12];
@@ -153,13 +152,8 @@ uint8_t btn_K[2] = {0};  //// encoder knob btn edge detect
 uint8_t btn_k_cnt = 0;
 
 //// Rotary encoder rotor
-//typedef enum{
-//	k_zero = 0x00U,
-//	k_up,
-//	k_down
-//} flag_k;
-uint8_t flag_k_up = 0;
-uint8_t flag_k_dn = 0;
+//uint8_t flag_k_up = 0;
+//uint8_t flag_k_dn = 0;
 
 struct{
 	uint8_t up;
@@ -177,6 +171,15 @@ static enum{
 
 }GrandState = pre_lobby;
 
+//// lists All port - pin to inspect first // avoid special pin like osilators / UART
+//// GPIO_PIN_x is in bit position format (0 2 4 8 16 ...) which loss if stored in that form and log2() to calculate back
+uint16_t List_GPIOA[] = {0,1,    4,5,6,7,8,9,10,            15,  20}; // 2,3 STLK RXTX / 11 12 VRT MTxCL / 13 14 TMS TCK
+uint16_t List_GPIOB[] = {0,1,2,  4,5,6,7,8,9,10,   12,13,14,15,  20}; // 11 is Vcap
+uint16_t List_GPIOC[] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,        20};
+
+char WR_A_PUPDR[50]; ////
+char WR_B_PUPDR[50];
+char WR_C_PUPDR[50];
 
 //// ----------- Display buffer ------------
 typedef struct {
@@ -191,7 +194,6 @@ uint8_t flag_boxpoint_start = 0; // in case start function
 uint8_t bois_xi = 0;
 uint8_t bois_yi = 0;
 uint16_t bosx[8] ={0, 40, 80, 120, 160};
-
 uint16_t bosy[6] ={220, 60, 90, 120, 150};
 
 uint8_t state_box_choice_n = 4;
@@ -227,6 +229,9 @@ void box_pointer(uint16_t posx, uint16_t posy);
 void knob_rotter();
 void Protection_machine();
 void manual_relay();
+
+float ADCTVolta(uint16_t btt);
+float TempEquat(float Vs);
 //VRTPTC_StatusTypedef Rx_Verita_engine(uint8_t *Rxbffr, uint32_t *regisk);
 /* USER CODE END PFP */
 
@@ -330,7 +335,8 @@ int main(void)
 	  ////  ------------- Verita UART Recieve --------------------------
 	  //HAL_UART_Receive_DMA(&huart6, &RxBufferMtCl[0], 9); // Normal DMA
 	  //engst = Rx_Verita_engine(RxBufferMtCl, verita_regis);
-	  Rx_Verita_engine(RxBufferMtCl, VRB.U32);
+	  Rx_Verita_engine(RxBufferMtCl, &VRB_CL); //  VRB_CL.U32
+	  Tx_Rq_Verita_engine(&huart6, &VRB_CL);
 	  //// ----------------------------------------------------
 
 
@@ -354,21 +360,21 @@ int main(void)
 		default:
 		case a_wait:
 
-			if(flag_k_up){
+			if(k_flag.up){ //flag_k_up
 
 				state_box_choice_is++;
 				state_box_choice_is %= state_box_choice_n; // don't be more than spec of Grandstate sub
 				//if(state_box_choice_is >= state_box_choice_n){state_box_choice_is = 0;}
 
-				 flag_k_up = 0;
+				k_flag.up = 0;
 				 a_boxpoint = a_change;}
-			if(flag_k_dn){
+			if(k_flag.dn){ //flag_k_dn
 
 				state_box_choice_is--;
 				state_box_choice_is = (state_box_choice_is < 0) ? state_box_choice_n-1:state_box_choice_is;
 				//if(state_box_choice_is < 0){state_box_choice_is = state_box_choice_n - 1;}
 
-				 flag_k_dn = 0;
+				 k_flag.dn = 0;
 				 a_boxpoint = a_change;}
 
 			break;
@@ -441,8 +447,16 @@ int main(void)
 
 		  } // timestamp_one
 
+
 	  if(HAL_GetTick() >= timestamp_sensors + 250){
 		  timestamp_sensors = HAL_GetTick(); // in case this func is temporary terminate, can continue
+
+		  /* Request every dynamic parameters
+		   *  - INA219#1 INA219#2
+		   *  - MCP3208 CH[0..7]
+		   *  - Client's MCU temp
+		   * */
+		  Tx_UART_Verita_Command(&huart6, VRC_Request, VR_CPU_Temp);// request first > pending > convert
 
 		  inata.Bus_V   = INA219Read_BusV(&hi2c1, INA219_ADDR_1);
 		  inata.CURRENT = INA219Read_Current(&hi2c1, INA219_ADDR_1);
@@ -466,6 +480,9 @@ int main(void)
 		  for(register int i = 0;i < 7;i++){
 			  mcp_read.cv[i] = MCP320x_ADCbit_to_Volt(mcp_read.raw[i]);
 		  }
+
+
+		  client_temp_mcuCC = TempEquat(ADCTVolta(VRB_CL.Mark.cputemp));
 
 		  //Protection_machine();
 		  manual_relay();
@@ -933,31 +950,6 @@ void box_pointer(uint16_t posx, uint16_t posy){
 
 void simple_scr(){
 	  //ili9341_DrawRGBImage(60, 80, 128, 128, (uint16_t*)image_data_ImageoftestN2);
-#ifdef INA219_Wrk
-
-	  //INATT.U16[1] = INA219Read_cx(&hi2c1, INA219_ADDR_1, INA219_RG_Config);
-	  //INATT.U16[2] = INA219Read_cx(&hi2c1, INA219_ADDR_1, INA219_RG_Current);
-
-//	  inata.Bus_V   = INA219Read_BusV(&hi2c1, INA219_ADDR_1);
-//	  inata.CURRENT = INA219Read_Current(&hi2c1, INA219_ADDR_1);
-//	  inata.POWER   = INA219Read_Power(&hi2c1, INA219_ADDR_1);
-//	  inata.SHUNT_V = INA219Read_ShuntV(&hi2c1, INA219_ADDR_1);
-//
-//	  inata.Calibra =  INA219Read_cx(&hi2c1, INA219_ADDR_1, INA219_RG_Calibra);
-//	  inata.Config = INA219Read_cx(&hi2c1, INA219_ADDR_1, INA219_RG_Config);
-
-//	  sprintf(TextDispBuffer,"calibrator:%4X", inata.Calibra);
-//	  ili9341_WriteString(20, 50, TextDispBuffer, Font12, cl_GREENYELLOW, cl_BLACK);
-//
-//	  sprintf(TextDispBuffer,"V mV: %d    ", inata.Bus_V);
-//	  ili9341_WriteString(20, 70, TextDispBuffer, Font16, cl_CYAN, cl_BLACK);
-//
-//	  sprintf(TextDispBuffer,"I mA: %d    ", inata.CURRENT);
-//	  ili9341_WriteString(20, 95, TextDispBuffer, Font16, cl_CYAN, cl_BLACK);
-//
-//	  sprintf(TextDispBuffer,"P mW: %.2f  ", inata.POWER);
-//	  ili9341_WriteString(20, 120, TextDispBuffer, Font16, cl_CYAN, cl_BLACK);
-#endif
 
 	  //mcp_read.raw[0] = MCP3208_READ_8_DataSPI(&hspi3, M8_CH0);
 	  //mcp_read.cv[0] = MCP320x_ADCbit_to_Volt(mcp_read.raw[0]);
@@ -969,33 +961,36 @@ void simple_scr(){
 	  ili9341_WriteString(170, 10, TextDispBuffer, Font16, cl_YELLOW, cl_BLACK);
 
 	  //// rortary encoder knob
-	  sprintf(TextDispBuffer,"enc %d %d %d", knobtick[0], btn_k_cnt, flag_k_up);
+	  sprintf(TextDispBuffer,"enc %d %d %d", knobtick[0], btn_k_cnt, k_flag.up); //flag_k_up
 	  ili9341_WriteString(170, 30, TextDispBuffer, Font16, cl_WHITE, cl_BLACK);
 
 	  sprintf(TextDispBuffer, "%ld, %d", TIM3->CNT, state_box_choice_is);
 	  ili9341_WriteString(190, 50, TextDispBuffer, Font16, cl_WHITE, cl_BLACK);
 
+}
 
+void Compare_pin(){
+	uint16_t A_PUPDR_N = VRB_CL.Mark.PA_PUPDR & 0xFFFF;
+	uint16_t A_PUPDR_P = (VRB_CL.Mark.PA_PUPDR >> 16) & 0xFFFF;
+	uint8_t ia, ib;
+
+
+	// A
+	for(register int i = 0;i < sizeof(List_GPIOA);i++){
+		ia = (A_PUPDR_N >> List_GPIOA[i]) & 0x01;
+		ib = (A_PUPDR_P >> List_GPIOA[i]) & 0x01;
+		 if(ia == ib){
+			 // record ?
+			 char aadd[4] = " PA";
+			 char aade = + List_GPIOA[i] + '0';
+			 strncat(aadd, &aade, 2);
+			 strncat(WR_A_PUPDR, aadd, 4);
+		 }
+	}
 }
 
 
 void Button_machine(){
-
-//	static uint8_t counter_btn_deb = 0;
-//
-//	if( (0x0F & ~(GPIOB->IDR >> 12)) ){
-//			counter_btn_deb++;
-//
-//		}else{
-//			counter_btn_deb = 0;
-//		}
-
-//		if(counter_btn_deb >= 3){ //// act as debounce
-//			btn_read[0] = (0x0F & ~(GPIOB->IDR >> 12));
-//
-//			//btn_read[1] = btn_read[0];
-//			counter_btn_deb = 0;
-//		}
 
 	/* 4x btn_read[4]{
 	 * [0]raw read,
@@ -1039,13 +1034,15 @@ void Button_machine(){
 void knob_rotter(){
 	//// round up
 	if((uint16_t)TIM3->CNT > knobtick[0]){  ////(uint16_t)TIM3->CNT - knobtick[0] >= 2
-		flag_k_up = 1;
+		//flag_k_up = 1;
+		k_flag.up = 1;
 		knobtick[0] = TIM3->CNT;
 
 	}
 	//// round down
 	else if((uint16_t)TIM3->CNT < knobtick[0]){ ////knobtick[0] - (uint16_t)TIM3->CNT >= 2
-		flag_k_dn = 1;
+		//flag_k_dn = 1;
+		k_flag.dn = 1;
 		knobtick[0] = TIM3->CNT;
 
 	}
@@ -1276,6 +1273,9 @@ void GrandState_Verita(){
 		sprintf(TextDispBuffer,"MCP");
 		ili9341_WriteString(220, 80, TextDispBuffer, Font16, cl_WHITE, cl_BLACK);
 
+		sprintf(TextDispBuffer,"Cl_Temp:");
+		ili9341_WriteString(20, 170, TextDispBuffer, Font20, cl_WHITE, cl_BLACK);
+
 		btn_k_cnt = 0; //// prevent over state jump
 		GrandState = monitor;
 		break;
@@ -1309,23 +1309,20 @@ void GrandState_Verita(){
 		sprintf(TextDispBuffer,"%.2f", inatb.POWER);
 		ili9341_WriteString(100, 150, TextDispBuffer, Font16, cl_ORANGE, cl_BLACK);
 
-//		sprintf(TextDispBuffer,"%d\n%d\n%d\n%d\n%d\n%d\n%d\n%d\n",
-//				mcp_read.raw[0],mcp_read.raw[1],
-//				mcp_read.raw[2],mcp_read.raw[3],
-//				mcp_read.raw[4],mcp_read.raw[5],
-//				mcp_read.raw[6],mcp_read.raw[7]);
-//		ili9341_FillRect(110, 50, 30, 110, cl_BLACK);
-//		ili9341_WriteStringNoBG(110, 50, TextDispBuffer, Font12, cl_YELLOW);
-
-
+		//// MCP3208 ADC Raw Read
 		ili9341_FillRect(220, 100, 30, 90, cl_BLACK);
 		for(register int t = 0; t < 7; t++){
 			sprintf(TextDispBuffer,"%d",mcp_read.raw[t]);
 		ili9341_WriteStringNoBG(220, 100 + (12*t), TextDispBuffer, Font12, cl_YELLOW);
 		}
 
-
-
+		//// Client's CPU Temp
+		sprintf(TextDispBuffer,"%2.2f", client_temp_mcuCC);
+			if(client_temp_mcuCC < 65){
+				ili9341_WriteString(100, 180, TextDispBuffer, Font16, cl_LIGHTGREY, cl_BLACK);
+			}else{
+				ili9341_WriteString(100, 180, TextDispBuffer, Font16, cl_RED, cl_BLACK);
+			}
 
 
 		if(btn_k_cnt){ //// Back to lobby
@@ -1336,15 +1333,25 @@ void GrandState_Verita(){
 	}
 }
 
+float ADCTVolta(uint16_t btt){return (btt /4096.0) * 3.3;}
+float TempEquat(float Vs){
+	//Vs = V tmp read , V25= 0.76V, Avg_slope = 2.5 mV
+	return ((Vs - 0.76)/(0.0025)) + 25.0; //2.5*0.001
+}
+
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 	if(GPIO_Pin == GPIO_PIN_13){
 		//INA219_BitReset(&hi2c1, INA219_ADDR_1);
-		flagc_bz = 12;
-		buzzr.flag = 12;
+		buzzr.flag = 8;
 		buzzer_scream_cnt();
 		//// bootloader test
 		//GrandState = s_bootloader;
 		//GrandState = init;
+
+		Tx_UART_Verita_Command(&huart6, VRC_Request, VR_CPU_Temp);
+		Tx_UART_Verita_Command(&huart6, VRC_Request, VR_FWID);
+		Tx_UART_Verita_Command(&huart6, VRC_Flag_1, 0x02);
+
 		}
 
 	if(GPIO_Pin == GPIO_PIN_7){

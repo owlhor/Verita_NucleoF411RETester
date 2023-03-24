@@ -14,7 +14,7 @@
 //#define verita_big_ENDIAN
 
 //// BufferSize must be evenly divided by Framesize
-#define RxbufferSize_VRT 108 /// 12 slot
+#define RxbufferSize_VRT 36
 #define Framesize_VRT 9 //// don't modify to any which not 9
 
 //// VRT Register map
