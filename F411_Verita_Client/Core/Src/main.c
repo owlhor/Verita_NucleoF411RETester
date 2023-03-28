@@ -89,13 +89,27 @@ uint16_t gpio_C_rd[4] = {0};
 uint32_t gpio_xpupd_rd[4] = {0};
 uint32_t gpio_xopp[3] = {0};
 uint32_t gpio_xood[3] = {0};
+
+uint32_t gpio_rec_mode[3] = {0};
+uint32_t gpio_rec_pupdr[3] = {0};
+
 uint8_t flag_gpioselftest = 0;
 
 //// lists All port - pin to inspect first // avoid special pin like osilators / UART
 //// GPIO_PIN_x is in bit position format (0 2 4 8 16 ...) which loss if stored in that form and log2() to calculate back
-uint16_t List_GPIOA[] = {0,1,    4,5,6,7,8,9,10,            15,  20}; // 2,3 STLK RXTX / 11 12 VRT MTxCL / 13 14 TMS TCK
+uint16_t List_GPIOA[] = {0,1,    4,5,6,7,8,9,10,            15,  20}; // 2,3 STLK RXTX / 11 12 VRT MTxCL / 13 14 TMS TCK / 9, 10 Master UART_BL High Affect
 uint16_t List_GPIOB[] = {0,1,2,  4,5,6,7,8,9,10,   12,13,14,15,  20}; // 11 is Vcap
 uint16_t List_GPIOC[] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,        20};
+
+char WR_A_PUPDR[30]; ////
+char WR_B_PUPDR[30];
+char WR_C_PUPDR[30];
+char WR_A_OPP[30]; ////
+char WR_B_OPP[30];
+char WR_C_OPP[30];
+char WR_A_OOD[30];
+char WR_B_OOD[30];
+char WR_C_OOD[30];
 
 //// --------- ============== Verita PTC Register ============== ------------
 Verita_Register_Bank VR_Cli;
@@ -122,6 +136,8 @@ float ADCTVolta(uint16_t btt);
 float TempEquat(float Vs);
 
 void GPIO_Selftest_step_1_single();
+void Compare_pin();
+void Compare_pin_32(uint32_t raw32, uint16_t *Lista_GPIOx, uint8_t gpst, char *outchar);
 //void Tx_UART_Verita_Packet_u8(UART_HandleTypeDef *huart, uint8_t regis,uint8_t *pdata, uint8_t size);
 //void Tx_UART_Verita_Packet_u32(UART_HandleTypeDef *huart, uint8_t regis,uint32_t pdata);
 /* USER CODE END PFP */
@@ -224,22 +240,6 @@ int main(void)
 
 	  if(flag_gpioselftest){
 
-#ifdef GPIO_SELFTEST_SC
-		  gpio_xpupd_rd[2] = gpio_selftest_input_pupdr_1(GPIOC, List_GPIOC);
-		  gpio_xpupd_rd[1] = gpio_selftest_input_pupdr_1(GPIOB, List_GPIOB);
-
-		  HAL_Delay(5);
-
-		  //// Reset PUPDR first?
-
-		  gpio_xopp[0] = gpio_selftest_output_pp_1(GPIOA, List_GPIOA);
-		  gpio_xopp[1] = gpio_selftest_output_pp_1(GPIOB, List_GPIOB);
-		  gpio_xopp[2] = gpio_selftest_output_pp_1(GPIOC, List_GPIOC);
-
-		  HAL_Delay(5);
-
-		  gpio_xood[1] = gpio_selftest_output_od_1(GPIOB, List_GPIOB);
-#endif
 		  //// ---------- Verita send 1 set --------------------------
 		  static uint8_t gg = 0x66;
 		  static uint8_t rg = 0x03;
@@ -253,35 +253,55 @@ int main(void)
 		  Tx_UART_Verita_Packet_u32(&huart6, 0x92, (uint32_t)0x00FF00AA);
 		  Tx_UART_Verita_Packet_u32(&huart6, 0x13, 0x12); //// data request
 
-
+		  VR_Cli.Mark.Flag_ger = 0x02;
 
 		  flag_gpioselftest = 0;
 	  }
 
 	  //// Flag test
-	  if(VR_Cli.Mark.Flag_gen == 0x02){
+	  if(VR_Cli.Mark.Flag_ger == 0x02){
+
+		  ////record default GPIO setup before modified in testscript
+		  gpio_rec_mode[0] = GPIOA->MODER;
+		  gpio_rec_pupdr[0] = GPIOA->PUPDR;
 
 		  //// Run GPIO Testscript all here or run before While
-		  VR_Cli.Mark.PA_PUPDR = gpio_selftest_input_pupdr_1(GPIOB, List_GPIOB);
+		  VR_Cli.Mark.PA_PUPDR = gpio_selftest_input_pupdr_1(GPIOA, List_GPIOA);
 		  VR_Cli.Mark.PB_PUPDR = gpio_selftest_input_pupdr_1(GPIOB, List_GPIOB);
 		  VR_Cli.Mark.PC_PUPDR = gpio_selftest_input_pupdr_1(GPIOC, List_GPIOC);
 
 		  HAL_Delay(5);
 
-		  gpio_xopp[0] = gpio_selftest_output_pp_1(GPIOA, List_GPIOA);
+		  VR_Cli.Mark.PA_OUT_PP = gpio_selftest_output_pp_1(GPIOA, List_GPIOA);
+		  VR_Cli.Mark.PB_OUT_PP = gpio_selftest_output_pp_1(GPIOB, List_GPIOB);
+		  VR_Cli.Mark.PC_OUT_PP = gpio_selftest_output_pp_1(GPIOC, List_GPIOC);
 
 		  HAL_Delay(5);
 
-		  gpio_xood[1] = gpio_selftest_output_od_1(GPIOB, List_GPIOB);
+		  VR_Cli.Mark.PA_OUT_OD = gpio_selftest_output_od_1(GPIOA, List_GPIOA);
+		  VR_Cli.Mark.PB_OUT_OD = gpio_selftest_output_od_1(GPIOB, List_GPIOB);
+		  VR_Cli.Mark.PC_OUT_OD = gpio_selftest_output_od_1(GPIOC, List_GPIOC);
+
+		  //// revert back, enable to send UART again after crashed in testscript
+		  GPIOA->MODER = gpio_rec_mode[0] ;
+		  GPIOA->PUPDR = gpio_rec_pupdr[0] ;
+
+		  Compare_pin();
+		  //Compare_pin_32(VR_Cli.Mark.PA_PUPDR, List_GPIOA, 0, WR_A_PUPDR);
+		  //Compare_pin_32(VR_Cli.Mark.PA_OUT_PP, List_GPIOA, 0, WR_A_OPP);
+
+		  sprintf(uartTXBf, WR_A_PUPDR);
+		  HAL_UART_Transmit(&huart2, (uint8_t*)uartTXBf, strlen(uartTXBf),10);
 
 		  uint32_t bbb = 0x12123333;
 		  for(register int i = 1;i < 9;i++){
 			  Tx_UART_Verita_Packet_u32(&huart6, i, bbb);
 			  bbb += 0xFF;
 		  }
+
 		  Tx_UART_Verita_Command(&huart6, VRC_Next, 0x00);
 
-		  VR_Cli.Mark.Flag_gen = 0;
+		  VR_Cli.Mark.Flag_ger = 0;
 	  }
     /* USER CODE END WHILE */
 
@@ -607,6 +627,67 @@ float TempEquat(float Vs){
 	return ((Vs - 0.76)/(0.0025)) + 25.0; //2.5*0.001
 }
 
+void Compare_pin(){
+	uint16_t A_PUPDR_N = VR_Cli.Mark.PA_PUPDR & 0xFFFF;
+	uint16_t A_PUPDR_P = (VR_Cli.Mark.PA_PUPDR >> 16) & 0xFFFF;
+	uint8_t iaa, iab;
+	char aadd[4];
+
+	//// A
+	for(register int i = 0;i < sizeof(List_GPIOA);i++){
+		if(List_GPIOA[i] >= 20){break;}
+
+		iaa = (A_PUPDR_N >> List_GPIOA[i]) & 0x01;
+		iab = (A_PUPDR_P >> List_GPIOA[i]) & 0x01;
+		 if(iaa == iab){
+			 //
+			 //char aadd[4] = " PA";
+			 //char aade =  List_GPIOA[i] + '0';
+			 //strncat(aadd, &aade, 2)
+			 sprintf(aadd, "PA%d", (uint8_t)List_GPIOA[i]); //
+			 strncat(WR_A_PUPDR, aadd, 4);
+			 sprintf(aadd, " ");
+			 strncat(WR_A_PUPDR, aadd, 1);
+		 }
+
+	}
+}
+
+void Compare_pin_32(uint32_t raw32, uint16_t *Lista_GPIOx, uint8_t gpst,char *outchar){
+	uint16_t raw32_N = raw32 & 0xFFFF;
+	uint16_t raw32_P = (raw32 >> 16) & 0xFFFF;
+	uint8_t iaa, iab;
+	char aadd[4];
+
+	//// A
+	for(register int i = 0;i < sizeof(Lista_GPIOx);i++){
+		if(Lista_GPIOx[i] >= 20){break;}
+
+		iaa = (raw32_N >> Lista_GPIOx[i]) & 0x01;
+		iab = (raw32_P >> Lista_GPIOx[i]) & 0x01;
+		 if(iaa == iab){
+
+			 switch(gpst){
+			 default:
+			 case 0: // A
+				 sprintf(aadd, "PA%d", (uint8_t)Lista_GPIOx[i]); //
+				 break;
+			 case 1: // B
+			 	 sprintf(aadd, "PB%d", (uint8_t)Lista_GPIOx[i]); //
+			 	 break;
+			 case 2: // C
+			 	 sprintf(aadd, "PC%d", (uint8_t)Lista_GPIOx[i]); //
+			 	 break;
+
+			 }
+			 //sprintf(aadd, "PA%d", (uint8_t)Lista_GPIOx[i]); //
+			 strncat(outchar, aadd, 4);
+			 sprintf(aadd, " ");
+			 strncat(outchar, aadd, 1);
+		 }
+	}
+}
+
 void GPIO_Selftest_step_1_single(){
 	/* 1 - Input pullup read
 	 * 2 - Input pulldown read
@@ -665,81 +746,6 @@ void GPIO_Selftest_step_1_single(){
 }
 
 
-//void Tx_UART_Verita_Packet_u8(UART_HandleTypeDef *huart, uint8_t regis,uint8_t *pdata, uint8_t size){
-//	/* @param huart - Pointer to a UART_HandleTypeDef structure that contains
-//     *                the configuration information for the specified UART module.
-//	 * @param regis - destination register need packet be inserted
-//	 * @param pdata - Pointer to data buffer (u8 or u16 data elements).
-//	 * @param size  - Amount of data elements (u8 or u16) to be received.
-//	 *
-//	 * */
-//
-//	 /* ----------------------- UART Verita Frame -------------------------
-//	  *  V R T + Addr of regis sent data + Data + chksum
-//	  *  0x56 0x52 0x54 0xregis ...
-// 	  */
-//
-//	uint8_t posit = 4; // start new position
-//	uint8_t pack[16] = {0x56, 0x52, 0x54, regis};
-//	uint8_t chksum = 0;
-//
-//	//// add data to packet
-//	for(register int j = 4; j < 4 + size ;j++){
-//			pack[j] = pdata[j-4];
-//			posit++;
-//		}
-//	//// Checksum generate , +4 means +3 start pack & +1 regis
-//	for(register int j = 3; j < size + 4;j++){
-//		chksum += pack[j];
-//	}
-//	pack[posit] = ~chksum;
-//
-//
-//	HAL_UART_Transmit(huart, (uint8_t*)pack, posit+1, 40);
-//}
-//
-//void Tx_UART_Verita_Packet_u32(UART_HandleTypeDef *huart, uint8_t regis,uint32_t pdata){
-//	/* @param huart - Pointer to a UART_HandleTypeDef structure that contains
-//     *                the configuration information for the specified UART module.
-//	 * @param regis - destination register need packet be inserted
-//	 * @param pdata - uint32 data to send
-//	 * @param size  - Amount of data elements (u8 or u16) to be received.
-//	 *
-//	 * */
-//
-//	//// Verita Header ////
-//	uint8_t pack[16] = {0x56, 0x52, 0x54, regis};
-//
-//	uint8_t posit = 4; // start new position
-//	uint8_t chksum = 0;
-//
-//	union{
-//		uint8_t  U8[4];
-//		uint32_t U32;
-//	}logu;
-//
-//	//// For 0x13 Data Request Flag
-//	if(regis == 0x13){
-//		logu.U32 = (pdata & 0x0000FFFF)| 0x000F0000; //// add flag to U16[0]
-//	}else{
-//		//// add data to packet, normal case
-//		logu.U32 = pdata;
-//	}
-//	//// add data to packet
-//	//logu.U32 = pdata;
-//	for(register int j = 4; j < 8; j++){
-//			pack[j] = logu.U8[j-4];
-//			posit++;
-//		}
-//	//// Checksum generate , +4 means +3 start pack & +1 regis
-//	for(register int j = 3; j < 8; j++){
-//		chksum += pack[j];
-//	}
-//	pack[posit] = ~chksum;
-//
-//
-//	HAL_UART_Transmit(huart, (uint8_t*)pack, posit+1, 50);
-//}
 
 //// ----------------GPIO_EXTI_Callback-----------------------------------------
 

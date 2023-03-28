@@ -185,6 +185,8 @@ char WR_A_OPP[50]; ////
 char WR_B_OPP[50];
 char WR_C_OOD[50];
 
+uint32_t UA_BL_Break; //// buffer for write GPIOA->AFR
+
 //// ----------- Display buffer ------------
 typedef struct _disp_posixy{
 	uint16_t xp; // x axis start point
@@ -282,6 +284,9 @@ void box_pointer(uint16_t posx, uint16_t posy);
 void knob_rotter();
 void Protection_machine();
 void manual_relay();
+
+void gpio_BL_UART_activate();
+void gpio_BL_UART_Deactivate();
 
 float ADCTVolta(uint16_t btt);
 float TempEquat(float Vs);
@@ -381,6 +386,10 @@ int main(void)
 
 ////  ------------- UART Recieve --------------------------
   HAL_UART_Receive_DMA(&huart6, &RxBufferMtCl[0], RxbufferSize_VRT);
+
+  gpio_BL_UART_Deactivate();
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_10, GPIO_PIN_RESET);
 
 
   /* USER CODE END 2 */
@@ -1239,6 +1248,9 @@ void GrandState_Verita(){
 	case s_bootloader:
 		stboxp.choice_set = bpoxy_def;
 
+		//// enable UART, disable after endboot, prevent misunderstanding when GPIO test
+		gpio_BL_UART_activate();
+
 		//// find n times must be loop to upload all code
 		bootloop_n = (boot_size / 256) + ((boot_size % 256)>0 ? 1:0);
 		//bootloop_n = (uint8_t)ceil(boot_size / 256.0);
@@ -1260,6 +1272,9 @@ void GrandState_Verita(){
 		//// WriteMem Set =========================================
 
 		BL_UART_Finish();
+
+		//// disable UART, disable after endboot, prevent misunderstanding when GPIO test
+		gpio_BL_UART_Deactivate();
 
 		k_flag.cnt = 0;//// prevent over state jump
 		GrandState = lobby;
@@ -1394,13 +1409,41 @@ float TempEquat(float Vs){
 	return ((Vs - 0.76)/(0.0025)) + 25.0; //2.5*0.001
 }
 
+void gpio_BL_UART_activate(){
+	/* Change AFRH (AFR[1]) for PA9 PA10 from default GPIO to UART AF7, Only at Bootloader process
+	 * PA9 PA10 is block 1, 2 in AFR[1]
+	 * AF7(USART1) = 0x07 | AF0(System) = 0x0
+	 *
+	 * RM0383 P150 Fig 17 AFR Mux & P164 GPIOx_AFR register map
+	 * */
+	  UA_BL_Break = GPIOA->AFR[1];
+	  UA_BL_Break &= ~( 0b1111 << (1 * 4U));
+	  UA_BL_Break &= ~( 0b1111 << (2 * 4U));
+	  UA_BL_Break |= ( 0x7 << (1 * 4U));
+	  UA_BL_Break |= ( 0x7 << (2 * 4U));
+	  GPIOA->AFR[1] = UA_BL_Break;
+}
+
+void gpio_BL_UART_Deactivate(){
+	/* Change AFRH (AFR[1]) for PA9 PA10 from Init UART to default GPIO, prevent UART High distrub the client
+	 * PA9 PA10 is block 1, 2 in AFR[1]
+	 * AF7(USART1) = 0x07 | AF0(System) = 0x0
+	 * */
+	  UA_BL_Break = GPIOA->AFR[1];
+	  UA_BL_Break &= ~( 0b1111 << (1 * 4U));
+	  UA_BL_Break &= ~( 0b1111 << (2 * 4U));
+	  UA_BL_Break |= ( 0x0 << (1 * 4U));
+	  UA_BL_Break |= ( 0x0 << (2 * 4U));
+	  GPIOA->AFR[1] = UA_BL_Break;
+}
+
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 	if(GPIO_Pin == GPIO_PIN_13){
 		//INA219_BitReset(&hi2c1, INA219_ADDR_1);
 		buzzr.flag = 8;
 		buzzer_scream_cnt();
 		//// bootloader test
-		//GrandState = s_bootloader;
+		GrandState = s_bootloader;
 		//GrandState = init;
 
 		Tx_UART_Verita_Command(&huart6, VRC_Request, VR_CPU_Temp);

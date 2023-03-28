@@ -13,12 +13,14 @@
 
 //#define verita_big_ENDIAN
 
-//// BufferSize must be evenly divided by Framesize
+//// BufferSize in byte must be evenly divided by Framesize
+/* RxbufferSize_VRT = 12n byte = n slot, n > 10++ - for classic engine
+ * RxbufferSize_VRT = 9 byte ("must be") for callBak-version engine, read 1 slot after callback
+ * */
 #define RxbufferSize_VRT 36
 #define Framesize_VRT 9 //// don't modify to any which not 9
 
 //// VRT Register map
-
 #define VR_PA_PUPDR   0x01
 #define VR_PA_OUT_PP  0x02
 #define VR_PA_OUT_OD  0x03
@@ -33,6 +35,8 @@
 #define VR_CPU_Temp   0x11
 #define VR_FWID       0x12
 
+//// VRT Flag
+#define VRF_GPIO_Runalltest 0x02
 
 typedef enum{
 	VRT_ERROR    = 0x90U,
@@ -82,7 +86,10 @@ typedef union _Verita_Register_Bank
 		uint32_t FirmwareVer;
 
 		// 0x13 general flag
-		uint32_t Flag_gen;
+		uint8_t Flag_ger;
+		uint8_t Flag_next; // next flag
+		uint8_t Flag_aa;  // reserve
+		uint8_t Flag_bb;
 
 		//uint32_t rsv3[6];
 
