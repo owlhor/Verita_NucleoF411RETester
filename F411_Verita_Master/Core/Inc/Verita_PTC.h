@@ -37,6 +37,7 @@
 
 //// VRT Flag
 #define VRF_GPIO_Runalltest 0x02
+#define VRF_SendALLTestData 0x04
 
 typedef enum{
 	VRT_ERROR    = 0x90U,
@@ -48,8 +49,10 @@ typedef enum{
 
 typedef enum{
 	VRC_Request  = 0xA0U,
-	VRC_Next 	 = 0xA1U,
-	VRC_Flag_1	 = 0xA2U
+	VRC_Flag_ger = 0xA1U,
+	VRC_Next 	 = 0xA2U,
+	VRC_Flag_aa  = 0xA3U,
+	VRC_Flag_bb  = 0xA4U
 } VRTPTC_CMDef;
 
 typedef union _Verita_Register_Bank
@@ -88,8 +91,8 @@ typedef union _Verita_Register_Bank
 		// 0x13 general flag
 		uint8_t Flag_ger;
 		uint8_t Flag_next; // next flag
-		uint8_t Flag_aa;  // reserve
-		uint8_t Flag_bb;
+		uint8_t Flag_aa;
+		uint8_t Flag_bb;// reserve
 
 		//uint32_t rsv3[6];
 

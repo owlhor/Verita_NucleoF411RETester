@@ -157,13 +157,19 @@ VRTPTC_StatusTypedef Rx_Verita_engine(uint8_t *Rxbffr, Verita_Register_Bank *reg
 					//// place Regis request & FlagRQ for Tx_RQ_Engine
 					regisk->U32[VR_DataReq] = logu.U32;
 					return VRT_OK;
-				case VRC_Next:
 
-					regisk->Mark.Flag_next = 0xFF;
-					return VRC_Next;
-				case VRC_Flag_1:
+				case VRC_Flag_ger:
 					regisk->Mark.Flag_ger = logu.U8[0];
 					return VRT_OK;
+
+				case VRC_Next:
+					regisk->Mark.Flag_next = 0xFF; return VRC_Next;
+
+				case VRC_Flag_aa:
+					regisk->Mark.Flag_aa = logu.U8[0]; return VRC_Flag_aa;
+
+				case VRC_Flag_bb:
+					regisk->Mark.Flag_bb = logu.U8[0]; return VRC_Flag_bb;
 			}
 		}
 
@@ -258,13 +264,19 @@ VRTPTC_StatusTypedef Rx_Verita_engine_callBak(uint8_t *Rxbffr, Verita_Register_B
 							//// place Regis request & FlagRQ for Tx_RQ_Engine
 							regisk->U32[VR_DataReq] = logu.U32;
 							return VRT_OK;
-						case VRC_Next:
 
-							regisk->Mark.Flag_next = 0xFF;
-							return VRC_Next;
-						case VRC_Flag_1:
+						case VRC_Flag_ger:
 							regisk->Mark.Flag_ger = logu.U8[0];
 							return VRT_OK;
+
+						case VRC_Next:
+							regisk->Mark.Flag_next = 0xFF; return VRC_Next;
+
+						case VRC_Flag_aa:
+							regisk->Mark.Flag_aa = logu.U8[0]; return VRC_Flag_aa;
+
+						case VRC_Flag_bb:
+							regisk->Mark.Flag_bb = logu.U8[0]; return VRC_Flag_bb;
 					}
 				}
 

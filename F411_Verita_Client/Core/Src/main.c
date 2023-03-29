@@ -80,6 +80,7 @@ uint16_t cputmpraw = 0;
 float cputempCC = 0;
 
 uint8_t bluecounter = 0;
+uint8_t counter_flagger = 0; // countif testscript is runned
 uint32_t timestamp_one = 0;
 
 
@@ -101,15 +102,15 @@ uint16_t List_GPIOA[] = {0,1,    4,5,6,7,8,9,10,            15,  20}; // 2,3 STL
 uint16_t List_GPIOB[] = {0,1,2,  4,5,6,7,8,9,10,   12,13,14,15,  20}; // 11 is Vcap
 uint16_t List_GPIOC[] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,        20};
 
-char WR_A_PUPDR[30]; ////
-char WR_B_PUPDR[30];
-char WR_C_PUPDR[30];
-char WR_A_OPP[30]; ////
-char WR_B_OPP[30];
-char WR_C_OPP[30];
-char WR_A_OOD[30];
-char WR_B_OOD[30];
-char WR_C_OOD[30];
+char WR_A_PUPDR[30] = "\r\nA_PUR: "; ////
+char WR_B_PUPDR[30] = "\r\nB_PUR: ";
+char WR_C_PUPDR[30] = "\r\nC_PUR: ";
+char WR_A_OPP[30]   = "\r\nA_OPP: "; ////
+char WR_B_OPP[30]   = "\r\nB_OPP: ";
+char WR_C_OPP[30]   = "\r\nC_OPP: ";
+char WR_A_OOD[30]   = "\r\nA_OOD: ";
+char WR_B_OOD[30]   = "\r\nB_OOD: ";
+char WR_C_OOD[30]   = "\r\nC_OOD: ";
 
 //// --------- ============== Verita PTC Register ============== ------------
 Verita_Register_Bank VR_Cli;
@@ -218,7 +219,7 @@ int main(void)
 	  Tx_Rq_Verita_engine(&huart6, &VR_Cli);
 
 	  if(HAL_GetTick() >= timestamp_one){
-		  timestamp_one += 300;
+		  timestamp_one += 1000;
 
 		  HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
 
@@ -227,18 +228,44 @@ int main(void)
 
 		  cputempCC = TempEquat(ADCTVolta(cputmpraw));
 
-		  sprintf(uartTXBf, "cpuraw = %d  => %.3f C\r\n ",
+		  sprintf(uartTXBf, "\r\n - - - - - - - - - - - - - - - - - - - - - - - - -\r\n");
+		  HAL_UART_Transmit(&huart2, (uint8_t*)uartTXBf, strlen(uartTXBf),10);
+
+		  sprintf(uartTXBf, "cputempraw = %d => %.3f C\r\n ",
 				  cputmpraw,
 				  cputempCC);
 		  HAL_UART_Transmit(&huart2, (uint8_t*)uartTXBf, strlen(uartTXBf),10);
 
+		  //// Print GPIO Test Result
+		  if(counter_flagger){
+			  sprintf(uartTXBf, WR_A_PUPDR); HAL_UART_Transmit(&huart2, (uint8_t*)uartTXBf, strlen(uartTXBf),10);
+
+			  sprintf(uartTXBf, WR_A_OPP); HAL_UART_Transmit(&huart2, (uint8_t*)uartTXBf, strlen(uartTXBf),10);
+
+			  sprintf(uartTXBf, WR_A_OOD); HAL_UART_Transmit(&huart2, (uint8_t*)uartTXBf, strlen(uartTXBf),10);
+
+			  sprintf(uartTXBf, WR_B_PUPDR); HAL_UART_Transmit(&huart2, (uint8_t*)uartTXBf, strlen(uartTXBf),10);
+
+			  sprintf(uartTXBf, WR_B_OPP); HAL_UART_Transmit(&huart2, (uint8_t*)uartTXBf, strlen(uartTXBf),10);
+
+			  sprintf(uartTXBf, WR_B_OOD); HAL_UART_Transmit(&huart2, (uint8_t*)uartTXBf, strlen(uartTXBf),10);
+
+			  sprintf(uartTXBf, WR_C_PUPDR); HAL_UART_Transmit(&huart2, (uint8_t*)uartTXBf, strlen(uartTXBf),10);
+
+			  sprintf(uartTXBf, WR_C_OPP); HAL_UART_Transmit(&huart2, (uint8_t*)uartTXBf, strlen(uartTXBf),10);
+
+			  sprintf(uartTXBf, WR_C_OOD); HAL_UART_Transmit(&huart2, (uint8_t*)uartTXBf, strlen(uartTXBf),10);
+		  }
+
+
 //		  HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_5);
 //		  gpio_C_rd[3] = HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_10);
-		  //HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_10);
+		  //HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_9);
 
 	  }
 
 	  if(flag_gpioselftest){
+
 
 		  //// ---------- Verita send 1 set --------------------------
 		  static uint8_t gg = 0x66;
@@ -253,13 +280,14 @@ int main(void)
 		  Tx_UART_Verita_Packet_u32(&huart6, 0x92, (uint32_t)0x00FF00AA);
 		  Tx_UART_Verita_Packet_u32(&huart6, 0x13, 0x12); //// data request
 
-		  VR_Cli.Mark.Flag_ger = 0x02;
-
+		  //VR_Cli.Mark.Flag_ger = 0x02;
 		  flag_gpioselftest = 0;
+
 	  }
 
 	  //// Flag test
-	  if(VR_Cli.Mark.Flag_ger == 0x02){
+	  if(VR_Cli.Mark.Flag_ger == VRF_GPIO_Runalltest){
+		  counter_flagger++;
 
 		  ////record default GPIO setup before modified in testscript
 		  gpio_rec_mode[0] = GPIOA->MODER;
@@ -286,22 +314,47 @@ int main(void)
 		  GPIOA->MODER = gpio_rec_mode[0] ;
 		  GPIOA->PUPDR = gpio_rec_pupdr[0] ;
 
-		  Compare_pin();
-		  //Compare_pin_32(VR_Cli.Mark.PA_PUPDR, List_GPIOA, 0, WR_A_PUPDR);
-		  //Compare_pin_32(VR_Cli.Mark.PA_OUT_PP, List_GPIOA, 0, WR_A_OPP);
+		  //Compare_pin();
+		  Compare_pin_32(VR_Cli.Mark.PA_PUPDR, List_GPIOA, 0, WR_A_PUPDR);
+		  Compare_pin_32(VR_Cli.Mark.PA_OUT_PP, List_GPIOA, 0, WR_A_OPP);
+		  Compare_pin_32(VR_Cli.Mark.PA_OUT_OD, List_GPIOA, 0, WR_A_OOD);
 
-		  sprintf(uartTXBf, WR_A_PUPDR);
-		  HAL_UART_Transmit(&huart2, (uint8_t*)uartTXBf, strlen(uartTXBf),10);
+		  Compare_pin_32(VR_Cli.Mark.PB_PUPDR, List_GPIOB, 1,  WR_B_PUPDR);
+		  Compare_pin_32(VR_Cli.Mark.PB_OUT_PP, List_GPIOB, 1, WR_B_OPP);
+		  Compare_pin_32(VR_Cli.Mark.PB_OUT_OD, List_GPIOB, 1, WR_B_OOD);
 
-		  uint32_t bbb = 0x12123333;
-		  for(register int i = 1;i < 9;i++){
-			  Tx_UART_Verita_Packet_u32(&huart6, i, bbb);
-			  bbb += 0xFF;
-		  }
+		  Compare_pin_32(VR_Cli.Mark.PC_PUPDR, List_GPIOC, 2, WR_C_PUPDR);
+		  Compare_pin_32(VR_Cli.Mark.PC_OUT_PP, List_GPIOC, 2, WR_C_OPP);
+		  Compare_pin_32(VR_Cli.Mark.PC_OUT_OD, List_GPIOC, 2, WR_C_OOD);
 
+//		  uint32_t bbb = 0x12123333;
+//		  for(register int i = 1;i < 9;i++){
+//			  Tx_UART_Verita_Packet_u32(&huart6, i, bbb);
+//			  bbb += 0xFF;
+//		  }
 		  Tx_UART_Verita_Command(&huart6, VRC_Next, 0x00);
-
 		  VR_Cli.Mark.Flag_ger = 0;
+	  }
+
+	  //// SEnd All Data Flag
+	  if(VR_Cli.Mark.Flag_ger == 0x04){
+
+		  Tx_UART_Verita_Packet_u32(&huart6, VR_PA_PUPDR, VR_Cli.Mark.PA_PUPDR);
+		  Tx_UART_Verita_Packet_u32(&huart6, VR_PB_PUPDR, VR_Cli.Mark.PB_PUPDR);
+		  Tx_UART_Verita_Packet_u32(&huart6, VR_PC_PUPDR, VR_Cli.Mark.PC_PUPDR);
+
+		  Tx_UART_Verita_Packet_u32(&huart6, VR_PA_OUT_PP, VR_Cli.Mark.PA_OUT_PP);
+		  Tx_UART_Verita_Packet_u32(&huart6, VR_PB_OUT_PP, VR_Cli.Mark.PB_OUT_PP);
+		  Tx_UART_Verita_Packet_u32(&huart6, VR_PC_OUT_PP, VR_Cli.Mark.PC_OUT_PP);
+
+		  Tx_UART_Verita_Packet_u32(&huart6, VR_PA_OUT_OD, VR_Cli.Mark.PA_OUT_OD);
+		  Tx_UART_Verita_Packet_u32(&huart6, VR_PB_OUT_OD, VR_Cli.Mark.PB_OUT_OD);
+		  Tx_UART_Verita_Packet_u32(&huart6, VR_PC_OUT_OD, VR_Cli.Mark.PC_OUT_OD);
+
+		  Tx_UART_Verita_Command(&huart6, VRC_Flag_aa, 0xFF);
+		  Tx_UART_Verita_Command(&huart6, VRC_Flag_ger, 0x04);
+		  VR_Cli.Mark.Flag_ger = 0;
+
 	  }
     /* USER CODE END WHILE */
 
@@ -627,45 +680,54 @@ float TempEquat(float Vs){
 	return ((Vs - 0.76)/(0.0025)) + 25.0; //2.5*0.001
 }
 
-void Compare_pin(){
-	uint16_t A_PUPDR_N = VR_Cli.Mark.PA_PUPDR & 0xFFFF;
-	uint16_t A_PUPDR_P = (VR_Cli.Mark.PA_PUPDR >> 16) & 0xFFFF;
-	uint8_t iaa, iab;
-	char aadd[4];
-
-	//// A
-	for(register int i = 0;i < sizeof(List_GPIOA);i++){
-		if(List_GPIOA[i] >= 20){break;}
-
-		iaa = (A_PUPDR_N >> List_GPIOA[i]) & 0x01;
-		iab = (A_PUPDR_P >> List_GPIOA[i]) & 0x01;
-		 if(iaa == iab){
-			 //
-			 //char aadd[4] = " PA";
-			 //char aade =  List_GPIOA[i] + '0';
-			 //strncat(aadd, &aade, 2)
-			 sprintf(aadd, "PA%d", (uint8_t)List_GPIOA[i]); //
-			 strncat(WR_A_PUPDR, aadd, 4);
-			 sprintf(aadd, " ");
-			 strncat(WR_A_PUPDR, aadd, 1);
-		 }
-
-	}
-}
+//void Compare_pin(){
+//	uint16_t A_PUPDR_N = VR_Cli.Mark.PA_PUPDR & 0xFFFF;
+//	uint16_t A_PUPDR_P = (VR_Cli.Mark.PA_PUPDR >> 16) & 0xFFFF;
+//	uint8_t iaa, iab;
+//	char aadd[4];
+//
+//	//// A
+//	for(register int i = 0;i < sizeof(List_GPIOA);i++){
+//		if(List_GPIOA[i] >= 20){break;}
+//
+//		iaa = (A_PUPDR_N >> List_GPIOA[i]) & 0x01;
+//		iab = (A_PUPDR_P >> List_GPIOA[i]) & 0x01;
+//		 if(iaa == iab){
+//			 //
+//			 sprintf(aadd, "PA%d", (uint8_t)List_GPIOA[i]); //
+//			 strncat(WR_A_PUPDR, aadd, 4);
+//			 sprintf(aadd, " ");
+//			 strncat(WR_A_PUPDR, aadd, 1);
+//		 }
+//
+//	}
+//}
 
 void Compare_pin_32(uint32_t raw32, uint16_t *Lista_GPIOx, uint8_t gpst,char *outchar){
+	/*  @brief compare uint32_t data given from gpio_testscript then compared to find the same pair
+	 * 			(According to the gpio_testscript functions, if the read value of GPIO_input during
+	 * 			force output(Push pull, open drain-pullup, Pullup-down)are the same,
+	 * 			That pin is suspected to got some problem and need to be inspected)
+	 *
+	 * 			 and record the suspected pin into char for report in Terminal, display
+	 * 	@param raw32       rawuint32_t data given from gpio_testscript functions
+	 * 	@param Lista_GPIOx List of GPIOs bank need to be checked
+	 * 	@param gpst        select report type [0 - PA_] [1 - PB_] [2 - PC_]
+	 * 	@param outchar     char for record the compare result report
+	 * */
 	uint16_t raw32_N = raw32 & 0xFFFF;
 	uint16_t raw32_P = (raw32 >> 16) & 0xFFFF;
-	uint8_t iaa, iab;
-	char aadd[4];
+	uint8_t iaa, iab, cntr_w = 0;
+	char aadd[6];
 
-	//// A
-	for(register int i = 0;i < sizeof(Lista_GPIOx);i++){
+	for(register int i = 0;i < 16;i++){
 		if(Lista_GPIOx[i] >= 20){break;}
 
 		iaa = (raw32_N >> Lista_GPIOx[i]) & 0x01;
 		iab = (raw32_P >> Lista_GPIOx[i]) & 0x01;
 		 if(iaa == iab){
+
+			 cntr_w++; // count if match
 
 			 switch(gpst){
 			 default:
@@ -680,11 +742,15 @@ void Compare_pin_32(uint32_t raw32, uint16_t *Lista_GPIOx, uint8_t gpst,char *ou
 			 	 break;
 
 			 }
-			 //sprintf(aadd, "PA%d", (uint8_t)Lista_GPIOx[i]); //
 			 strncat(outchar, aadd, 4);
 			 sprintf(aadd, " ");
 			 strncat(outchar, aadd, 1);
 		 }
+	}
+
+	if(!cntr_w){
+		sprintf(aadd, "_PASS");
+		strncat(outchar, aadd, 7);
 	}
 }
 
@@ -755,6 +821,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 		bluecounter%=4;
 
 		flag_gpioselftest = 1;
+		VR_Cli.Mark.Flag_ger = VRF_GPIO_Runalltest;
 
 
 #ifdef TIMx_PWM_En
