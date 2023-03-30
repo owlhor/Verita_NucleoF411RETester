@@ -17,8 +17,8 @@
 /* RxbufferSize_VRT = 12n byte = n slot, n > 10++ - for classic engine
  * RxbufferSize_VRT = 9 byte ("must be") for callBak-version engine, read 1 slot after callback
  * */
-#define RxbufferSize_VRT 36
-#define Framesize_VRT 9 //// don't modify to any which not 9
+#define RxbufferSize_VRT 9
+#define Framesize_VRT 9 //// don't modify to any which not 9 / set to 1 for allbuf read, might slower but sure
 
 //// VRT Register map
 #define VR_PA_PUPDR   0x01
@@ -104,6 +104,7 @@ typedef union _Verita_Register_Bank
 
 VRTPTC_StatusTypedef Rx_Verita_engine(uint8_t *Rxbffr, Verita_Register_Bank *regisk);
 VRTPTC_StatusTypedef Tx_Rq_Verita_engine(UART_HandleTypeDef *huart, Verita_Register_Bank *vrg_intn);
+VRTPTC_StatusTypedef Rx_Verita_engine_callBak(uint8_t *Rxbffr, Verita_Register_Bank *regisk);
 void Tx_UART_Verita_Packet_u8(UART_HandleTypeDef *huart, uint8_t regis,uint8_t *pdata, uint8_t size);
 void Tx_UART_Verita_Packet_u32(UART_HandleTypeDef *huart, uint8_t regis,uint32_t pdata);
 void Tx_UART_Verita_Command(UART_HandleTypeDef *huart, VRTPTC_CMDef cmd, uint8_t regis);

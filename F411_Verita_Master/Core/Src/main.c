@@ -158,6 +158,7 @@ struct _k_flag{
 struct _grandScript{
 	uint8_t fullflag; //// flag indicate full script run
 	uint8_t counter_overcurrent;
+	uint32_t timelog; // use to stamp time for like count up 3 sec
 } gScr;
 
 static enum _GrandState{
@@ -275,7 +276,6 @@ i = stnum(1-lobby, 2-mon, 3-boot, 4...);
  * */
 
 ////concept -------------------------------------
-
 //// ________________________________________________________________
 /* USER CODE END PV */
 
@@ -402,11 +402,9 @@ int main(void)
 
 
 ////  ------------- UART Recieve --------------------------
-  HAL_UART_Receive_DMA(&huart6, &RxBufferMtCl[0], RxbufferSize_VRT);
+   HAL_UART_Receive_DMA(&huart6, RxBufferMtCl, RxbufferSize_VRT);
 
-  gpio_BL_UART_Deactivate();
-  //HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, GPIO_PIN_RESET);
-  //HAL_GPIO_WritePin(GPIOA, GPIO_PIN_10, GPIO_PIN_RESET);
+   gpio_BL_UART_Deactivate();
 
 
   /* USER CODE END 2 */
@@ -424,12 +422,12 @@ int main(void)
 	  ////  ------------- Verita UART Recieve --------------------------
 	  //engst = Rx_Verita_engine(RxBufferMtCl, verita_regis);
 	  //Rx_Verita_engine(RxBufferMtCl, &VRB_CL); //  Use callback instead
-	  Tx_Rq_Verita_engine(&huart6, &VRB_CL);
+	  //Tx_Rq_Verita_engine(&huart6, &VRB_CL);
 	  //// ----------------------------------------------------
 
 
 	  if (HAL_GetTick() >= timestamp_buzbtn){
-		timestamp_buzbtn += 100;
+		timestamp_buzbtn += 20;
 
 		knob_rotter();
 		//running_box();
@@ -443,18 +441,24 @@ int main(void)
 			if(k_flag.up){
 
 				stboxp.ch_is++;
-				stboxp.ch_is %= bposxy[stboxp.choice_set].n_s; // don't be more than spec of Grandstate sub
 
 				k_flag.up = 0;
 				boxpoint_runner = a_change;}
 			if(k_flag.dn){
 
-				stboxp.ch_is--;
-				stboxp.ch_is = (stboxp.ch_is < 0) ? bposxy[stboxp.choice_set].n_s - 1 : stboxp.ch_is;
-				//if(state_box_choice_is < 0){state_box_choice_is = state_box_choice_n - 1;}
+				//stboxp.ch_is--;
+				//stboxp.ch_is = (stboxp.ch_is < 0) ? bposxy[stboxp.choice_set].n_s - 1 : stboxp.ch_is;
+				//if(stboxp.ch_is  < 0){
+				//	stboxp.ch_is  = bposxy[stboxp.choice_set].n_s - 1;}
+
+				if(stboxp.ch_is == 0){
+						stboxp.ch_is  = bposxy[stboxp.choice_set].n_s - 1;}
+				else{stboxp.ch_is--;}
 
 				 k_flag.dn = 0;
 				 boxpoint_runner = a_change;}
+
+			stboxp.ch_is %= bposxy[stboxp.choice_set].n_s; // don't be more than spec of Grandstate sub
 
 			break;
 
@@ -516,7 +520,7 @@ int main(void)
 		  client_temp_mcuCC = TempEquat(ADCTVolta(VRB_CL.Mark.cputemp));
 
 
-		  //Protection_machine();
+		  Protection_machine();
 		  manual_relay();
 	  }
 
@@ -1091,10 +1095,11 @@ void Protection_machine(){
 		if(gScr.counter_overcurrent >= 8){
 			gScr.counter_overcurrent = 0;
 			gScr.fullflag = 0;
+
 			////Relay_cut
 			HAL_GPIO_WritePin(RelayClient_GPIO_Port, RelayClient_Pin, GPIO_PIN_RESET);
-			//// Buzzer scream
 
+			//// Buzzer scream
 			buzzr.flag = 1;
 			buzzr.priod_up = 1000;
 			buzzer_scream_cnt();
@@ -1264,13 +1269,18 @@ void GrandState_Verita(){
 		sprintf(TextDispBuffer, "%ld, %d", TIM3->CNT, stboxp.ch_is);
 		ili9341_WriteString(200, 220, TextDispBuffer, Font12, cl_WHITE, cl_BLACK);
 		//simple_scr();
+
 		if(k_flag.cnt){
 
-			if (stboxp.ch_is == 2){GrandState = pre_monitor;}
-			else if (stboxp.ch_is == 1) {
+
+			if (stboxp.ch_is == 1) {
 				gScr.fullflag = ff_runfull;
 				GrandState = pre_hw_chk;
 			}
+			else if (stboxp.ch_is == 2){GrandState = pre_monitor;}
+			else if (stboxp.ch_is == 3){GrandState = pre_hw_chk;}
+			else if (stboxp.ch_is == 4){GrandState = pre_fw_lob;}
+			else if (stboxp.ch_is == 5){GrandState = pre_about;}
 
 		k_flag.cnt = 0;
 		}
@@ -1299,6 +1309,73 @@ void GrandState_Verita(){
 
 		GrandState = lobby;
 		break;
+
+	case pre_hw_chk:
+		stboxp.choice_set = bpoxy_def;
+		ili9341_FillRect(0, 30, 320, 210, cl_BLACK);
+		ili9341_FillRect(0, 0, 320, 30, cl_ORANGE);
+
+		//// Auto ON relay
+		HAL_GPIO_WritePin(RelayClient_GPIO_Port, RelayClient_Pin, GPIO_PIN_SET);
+
+		sprintf(TextDispBuffer,"Hardware_Chk");
+		ili9341_WriteStringNoBG(60, 5, TextDispBuffer, Font20, cl_WHITE);
+
+
+		sprintf(TextDispBuffer,"5Vin:");
+		ili9341_WriteStringNoBG(15, 50, TextDispBuffer, Font16, cl_WHITE);
+
+		sprintf(TextDispBuffer,"3V3:");
+		ili9341_WriteStringNoBG(15, 75, TextDispBuffer, Font16, cl_WHITE);
+
+		sprintf(TextDispBuffer,"3V3");
+		ili9341_WriteStringNoBG(15, 95, TextDispBuffer, Font16, cl_WHITE);
+		sprintf(TextDispBuffer,"STLink");
+		ili9341_WriteStringNoBG(15, 113, TextDispBuffer, Font12, cl_WHITE);
+
+		sprintf(TextDispBuffer,"I Brd:");
+		ili9341_WriteStringNoBG(15, 125, TextDispBuffer, Font16, cl_WHITE);
+
+		sprintf(TextDispBuffer,"I MCU:");
+		ili9341_WriteStringNoBG(15, 150, TextDispBuffer, Font16, cl_WHITE);
+
+		sprintf(TextDispBuffer,"mV"); ili9341_WriteStringNoBG(150, 54, TextDispBuffer, Font12, cl_WHITE);
+		sprintf(TextDispBuffer,"mV"); ili9341_WriteStringNoBG(150, 79, TextDispBuffer, Font12, cl_WHITE);
+		sprintf(TextDispBuffer,"mV"); ili9341_WriteStringNoBG(150, 104, TextDispBuffer, Font12, cl_WHITE);
+		sprintf(TextDispBuffer,"mA"); ili9341_WriteStringNoBG(150, 129, TextDispBuffer, Font12, cl_WHITE);
+		sprintf(TextDispBuffer,"mA"); ili9341_WriteStringNoBG(150, 154, TextDispBuffer, Font12, cl_WHITE);
+
+
+		gScr.timelog = HAL_GetTick() + 3500;
+
+		k_flag.cnt = 0; //// prevent over state jump
+		GrandState = hw_chk;
+		break; //pre_hw_chk
+	case hw_chk:
+		stboxp.choice_set = bpoxy_def;
+
+
+		sprintf(TextDispBuffer,"<-Back");
+		ili9341_WriteStringNoBG(30, 220, TextDispBuffer, Font16, cl_WHITE);
+
+
+		/*condition to jump state from HW
+		 * if currentchk ok
+		 * 		if pressed or 3 sec pass -> go bootloader
+		 * else force back lobby & turnoff relay.
+		 * */
+		if(k_flag.cnt){ //|| HAL_GetTick() >= gScr.timelog
+
+			if(gScr.fullflag == ff_runfull){
+
+			GrandState = pre_bootloader;
+			}
+			else{
+				GrandState = pre_lobby;
+			}
+		}
+
+		break; //hw_chk
 
 	case pre_bootloader:
 		stboxp.choice_set = bpoxy_no;
@@ -1359,7 +1436,7 @@ void GrandState_Verita(){
 		if(gScr.fullflag == ff_runfull){
 			GrandState = pre_gpio_chk;
 		}else{
-			GrandState = lobby;
+			GrandState = pre_lobby;
 		}
 
 		break; ////s_bootloader
@@ -1425,12 +1502,21 @@ void GrandState_Verita(){
 			stboxp.choice_set = bpoxy_def;
 
 
+
+			if(k_flag.cnt && stboxp.ch_is == 1){ //// Back to lobby
+					GrandState = pre_lobby;
+					k_flag.cnt = 0;
+					HAL_GPIO_WritePin(RelayClient_GPIO_Port, RelayClient_Pin, GPIO_PIN_RESET);
+					}
 			break; //gpio_chk
 
 	case pre_monitor:
 		stboxp.choice_set = bpoxy_def;
 		ili9341_FillRect(0, 30, 320, 210, cl_BLACK);
 		ili9341_FillRect(0, 0, 320, 30, cl_BLUE);
+
+		//// Auto ON relay
+		HAL_GPIO_WritePin(RelayClient_GPIO_Port, RelayClient_Pin, GPIO_PIN_SET);
 
 		sprintf(TextDispBuffer,"PWR_Monitor");
 		ili9341_WriteStringNoBG(60, 5, TextDispBuffer, Font20, cl_WHITE);
@@ -1499,7 +1585,7 @@ void GrandState_Verita(){
 		if(inata.Bus_V < 2000){
 			ili9341_WriteString(90, 75, TextDispBuffer, Font16, cl_RED, cl_BLACK);
 		}else{
-			ili9341_WriteString(100, 75, TextDispBuffer, Font16, cl_GREEN, cl_BLACK);
+			ili9341_WriteString(90, 75, TextDispBuffer, Font16, cl_GREEN, cl_BLACK);
 		}
 
 		sprintf(TextDispBuffer,"%4d", inata.CURRENT);
@@ -1507,10 +1593,10 @@ void GrandState_Verita(){
 		sprintf(TextDispBuffer,"%4d", inatb.CURRENT);
 		ili9341_WriteString(90, 125, TextDispBuffer, Font16, cl_CYAN, cl_BLACK);
 
-		sprintf(TextDispBuffer,"%.2f", inata.POWER);
-		ili9341_WriteString(120, 150, TextDispBuffer, Font16, cl_ORANGE, cl_BLACK);
-		sprintf(TextDispBuffer,"%.2f", inatb.POWER);
-		ili9341_WriteString(120, 170, TextDispBuffer, Font16, cl_ORANGE, cl_BLACK);
+		sprintf(TextDispBuffer,"%4.1f", inata.POWER);
+		ili9341_WriteString(95, 150, TextDispBuffer, Font16, cl_ORANGE, cl_BLACK);
+		sprintf(TextDispBuffer,"%4.1f", inatb.POWER);
+		ili9341_WriteString(95, 170, TextDispBuffer, Font16, cl_ORANGE, cl_BLACK);
 
 		//// MCP3208 ADC Raw Read
 		ili9341_FillRect(250, 65, 30, 84, cl_BLACK);
@@ -1528,7 +1614,7 @@ void GrandState_Verita(){
 			}
 
 
-		if(k_flag.cnt){ //// Back to lobby
+		if(k_flag.cnt && stboxp.ch_is == 1){ //// Back to lobby
 			GrandState = pre_lobby;
 			k_flag.cnt = 0;
 			}
@@ -1604,12 +1690,12 @@ void gpio_BL_UART_activate(){
 	  UA_BL_Break |= ( 0x7 << (2 * 4U));
 	  GPIOA->AFR[1] = UA_BL_Break;
 
-//	  uint32_t tyyy = GPIOA->PUPDR;
-//	  tyyy &= ~( 0b11 << (9 * 2U));
-//	  tyyy &= ~( 0b11 << (10 * 2U));
-//	  tyyy |= ( GPIO_NOPULL << (9 * 2U));
-//	  tyyy |= ( GPIO_NOPULL << (10 * 2U));
-//	  GPIOA->PUPDR = tyyy;
+	  uint32_t tyyy = GPIOA->PUPDR;
+	  tyyy &= ~( 0b11 << (9 * 2U));
+	  tyyy &= ~( 0b11 << (10 * 2U));
+	  tyyy |= ( GPIO_NOPULL << (9 * 2U));
+	  tyyy |= ( GPIO_NOPULL << (10 * 2U));
+	  GPIOA->PUPDR = tyyy;
 }
 
 void gpio_BL_UART_Deactivate(){
@@ -1624,12 +1710,12 @@ void gpio_BL_UART_Deactivate(){
 	  UA_BL_Break |= ( 0x0 << (2 * 4U));
 	  GPIOA->AFR[1] = UA_BL_Break;
 
-//		 uint32_t tyyy = GPIOA->PUPDR;
-//		 tyyy &= ~( 0b11 << (9 * 2U));
-//		 tyyy &= ~( 0b11 << (10 * 2U));
-//		 tyyy |= ( GPIO_PULLDOWN << (9 * 2U));
-//		 tyyy |= ( GPIO_PULLDOWN << (10 * 2U));
-//		 GPIOA->PUPDR = tyyy;
+		 uint32_t tyyy = GPIOA->PUPDR;
+		 tyyy &= ~( 0b11 << (9 * 2U));
+		 tyyy &= ~( 0b11 << (10 * 2U));
+		 tyyy |= ( GPIO_NOPULL << (9 * 2U));
+		 tyyy |= ( GPIO_NOPULL << (10 * 2U));
+		 GPIOA->PUPDR = tyyy;
 }
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
@@ -1643,8 +1729,8 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 		//GrandState = s_bootloader;
 		//GrandState = init;
 
-
 		Tx_UART_Verita_Command(&huart6, VRC_Flag_ger, VRF_GPIO_Runalltest);
+		//Tx_UART_Verita_Command(&huart6, VRC_Request, VR_FWID);
 
 		}
 
@@ -1666,6 +1752,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
 	Rx_Verita_engine_callBak(RxBufferMtCl, &VRB_CL); //// try using only 1 slot 9 Buffer
+	Tx_Rq_Verita_engine(&huart6, &VRB_CL);
 }
 
 

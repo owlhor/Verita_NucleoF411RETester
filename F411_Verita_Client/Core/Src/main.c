@@ -49,7 +49,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define FIRMWARE_VER 0x02240323 // 01 00 03 23  -- ver day month year 32-bit
+#define FIRMWARE_VER 0x03300323 // 01 00 03 23  -- ver day month year 32-bit
 //#define TIMx_PWM_En
 //#define GPIO_SELFTEST_SC
 /* USER CODE END PD */
@@ -85,11 +85,11 @@ uint32_t timestamp_one = 0;
 
 
 //// --------- GPIO Read Buffer --------
-uint32_t temp_mode, temp_pupdr;
-uint16_t gpio_C_rd[4] = {0};
-uint32_t gpio_xpupd_rd[4] = {0};
-uint32_t gpio_xopp[3] = {0};
-uint32_t gpio_xood[3] = {0};
+//uint32_t temp_mode, temp_pupdr;
+//uint16_t gpio_C_rd[4] = {0};
+//uint32_t gpio_xpupd_rd[4] = {0};
+//uint32_t gpio_xopp[3] = {0};
+//uint32_t gpio_xood[3] = {0};
 
 uint32_t gpio_rec_mode[3] = {0};
 uint32_t gpio_rec_pupdr[3] = {0};
@@ -102,19 +102,21 @@ uint16_t List_GPIOA[] = {0,1,    4,5,6,7,8,9,10,            15,  20}; // 2,3 STL
 uint16_t List_GPIOB[] = {0,1,2,  4,5,6,7,8,9,10,   12,13,14,15,  20}; // 11 is Vcap
 uint16_t List_GPIOC[] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,        20};
 
-char WR_A_PUPDR[30] = "\r\nA_PUR: "; ////
-char WR_B_PUPDR[30] = "\r\nB_PUR: ";
-char WR_C_PUPDR[30] = "\r\nC_PUR: ";
-char WR_A_OPP[30]   = "\r\nA_OPP: "; ////
-char WR_B_OPP[30]   = "\r\nB_OPP: ";
-char WR_C_OPP[30]   = "\r\nC_OPP: ";
-char WR_A_OOD[30]   = "\r\nA_OOD: ";
-char WR_B_OOD[30]   = "\r\nB_OOD: ";
-char WR_C_OOD[30]   = "\r\nC_OOD: ";
+char WR_A_PUPDR[40] = "\r\nA_PUR: "; ////
+char WR_B_PUPDR[40] = "\r\nB_PUR: ";
+char WR_C_PUPDR[40] = "\r\nC_PUR: ";
+char WR_A_OPP[40]   = "\r\nA_OPP: "; ////
+char WR_B_OPP[40]   = "\r\nB_OPP: ";
+char WR_C_OPP[40]   = "\r\nC_OPP: ";
+char WR_A_OOD[40]   = "\r\nA_OOD: ";
+char WR_B_OOD[40]   = "\r\nB_OOD: ";
+char WR_C_OOD[40]   = "\r\nC_OOD: ";
 
 //// --------- ============== Verita PTC Register ============== ------------
 Verita_Register_Bank VR_Cli;
 uint8_t RxBufferMtCl[RxbufferSize_VRT] = {0}; // Recieved packet buffer
+
+VRTPTC_StatusTypedef rslt;
 
 //// ----------------------  UART Buffer  -------------------
 char uartTXBf[100] = {0};
@@ -188,8 +190,8 @@ int main(void)
   char temp[]="----------------- F411_Verita_Client --------------------\r\n";
   HAL_UART_Transmit(&huart2, (uint8_t*)temp, strlen(temp),10);
 
-  ////  ------------- UART Recieve --------------------------
-  HAL_UART_Receive_DMA(&huart6, &RxBufferMtCl[0], RxbufferSize_VRT);
+  ////  ------------- UART Recieve : Circular DMA here--------------------------
+  //HAL_UART_Receive_DMA(&huart6, &RxBufferMtCl[0], RxbufferSize_VRT);
 
   VR_Cli.Mark.FirmwareVer = FIRMWARE_VER;
 
@@ -214,9 +216,10 @@ int main(void)
   while (1)
   {
 
-	  //
-	  Rx_Verita_engine(RxBufferMtCl, &VR_Cli);
-	  Tx_Rq_Verita_engine(&huart6, &VR_Cli);
+	  //rslt = Rx_Verita_engine(RxBufferMtCl, &VR_Cli);
+	  //Tx_Rq_Verita_engine(&huart6, &VR_Cli);
+	  ////  ------------- UART Recieve : Normal DMA --------------------------
+	  HAL_UART_Receive_DMA(&huart6, &RxBufferMtCl[0], 9);
 
 	  if(HAL_GetTick() >= timestamp_one){
 		  timestamp_one += 1000;
@@ -333,23 +336,30 @@ int main(void)
 //			  bbb += 0xFF;
 //		  }
 		  Tx_UART_Verita_Command(&huart6, VRC_Next, 0x00);
-		  VR_Cli.Mark.Flag_ger = 0;
+		  VR_Cli.Mark.Flag_ger = VRF_SendALLTestData;
+
 	  }
 
 	  //// SEnd All Data Flag
-	  if(VR_Cli.Mark.Flag_ger == 0x04){
+	  if(VR_Cli.Mark.Flag_ger == VRF_SendALLTestData){
 
 		  Tx_UART_Verita_Packet_u32(&huart6, VR_PA_PUPDR, VR_Cli.Mark.PA_PUPDR);
 		  Tx_UART_Verita_Packet_u32(&huart6, VR_PB_PUPDR, VR_Cli.Mark.PB_PUPDR);
 		  Tx_UART_Verita_Packet_u32(&huart6, VR_PC_PUPDR, VR_Cli.Mark.PC_PUPDR);
 
+		  HAL_Delay(10);
+
 		  Tx_UART_Verita_Packet_u32(&huart6, VR_PA_OUT_PP, VR_Cli.Mark.PA_OUT_PP);
 		  Tx_UART_Verita_Packet_u32(&huart6, VR_PB_OUT_PP, VR_Cli.Mark.PB_OUT_PP);
 		  Tx_UART_Verita_Packet_u32(&huart6, VR_PC_OUT_PP, VR_Cli.Mark.PC_OUT_PP);
 
+		  HAL_Delay(10);
+
 		  Tx_UART_Verita_Packet_u32(&huart6, VR_PA_OUT_OD, VR_Cli.Mark.PA_OUT_OD);
 		  Tx_UART_Verita_Packet_u32(&huart6, VR_PB_OUT_OD, VR_Cli.Mark.PB_OUT_OD);
 		  Tx_UART_Verita_Packet_u32(&huart6, VR_PC_OUT_OD, VR_Cli.Mark.PC_OUT_OD);
+
+		  HAL_Delay(10);
 
 		  Tx_UART_Verita_Command(&huart6, VRC_Flag_aa, 0xFF);
 		  Tx_UART_Verita_Command(&huart6, VRC_Flag_ger, 0x04);
@@ -729,6 +739,7 @@ void Compare_pin_32(uint32_t raw32, uint16_t *Lista_GPIOx, uint8_t gpst,char *ou
 
 			 cntr_w++; // count if match
 
+			 //// add problem pin
 			 switch(gpst){
 			 default:
 			 case 0: // A
@@ -743,6 +754,16 @@ void Compare_pin_32(uint32_t raw32, uint16_t *Lista_GPIOx, uint8_t gpst,char *ou
 
 			 }
 			 strncat(outchar, aadd, 4);
+
+			 //// add High, Low
+			 if(iaa == 1){
+				 sprintf(aadd, "_H");
+			 }else if(iaa == 0){
+				 sprintf(aadd, "_L");
+			 }
+			 strncat(outchar, aadd, 2);
+
+			 //// add blank
 			 sprintf(aadd, " ");
 			 strncat(outchar, aadd, 1);
 		 }
@@ -754,62 +775,62 @@ void Compare_pin_32(uint32_t raw32, uint16_t *Lista_GPIOx, uint8_t gpst,char *ou
 	}
 }
 
-void GPIO_Selftest_step_1_single(){
-	/* 1 - Input pullup read
-	 * 2 - Input pulldown read
-	 *
-	 * 3 - Output pushpull
-	 * 4 - Output opendrain
-	 *
-	 * 0xA800 0000 | Reset GPIOA_MODER
-	 * 0x6400 0000 | Reset GPIOA_PUPDR
-	 * */
-
-
-	//uint32_t temp_mode, temp_pupdr; //
-	//uint32_t posit = 0x00000001;
-
-	//GPIOC->MODER = 0x00000000U; //
-	//GPIOC->PUPDR = 0x05555555U; //  All pullup
-	//GPIOC->PUPDR = 0x0AAAAAAAU; //  All pulldown
-
-	temp_mode = GPIOC->MODER;
-	temp_pupdr = GPIOC->PUPDR;
-
-	uint8_t sizearr = sizeof(List_GPIOC); // / sizeof(List_GPIOC[0])
-
-
-	//// ------------------ Input PULLUP ------------------------------
-	for(register int i = 0;i < sizearr; i++){
-		temp_mode &= ~( 0b11 << (List_GPIOC[i] * 2U)); // clear only 2 register want to reconfig by shift 11 to prefer position then & it's invert to the previous read
-		temp_mode |= ( GPIO_MODE_INPUT << (List_GPIOC[i] * 2U));
-	}
-	GPIOC->MODER = temp_mode;
-
-
-	for(register int i = 0;i < sizearr; i++){
-		temp_pupdr &= ~( 0b11 << (List_GPIOC[i] * 2U)); // clear only 2 register want to reconfig by shift 11 to prefer position then & it's invert to the previous read
-		temp_pupdr |= ( GPIO_PULLUP << (List_GPIOC[i] * 2U));
-	}
-	GPIOC->PUPDR = temp_pupdr;
-	HAL_Delay(5);
-	gpio_C_rd[0] = GPIOC->IDR;
-
-	//// ------------------ Input PULLDOWN ------------------------------
-	for(register int i = 0;i < sizearr; i++){
-		temp_pupdr &= ~( 0b11 << (List_GPIOC[i] * 2U)); // clear only 2 register want to reconfig by shift 11 to prefer position then & it's invert to the previous read
-		temp_pupdr |= ( GPIO_PULLDOWN << (List_GPIOC[i] * 2U));
-	}
-	GPIOC->PUPDR = temp_pupdr;
-	HAL_Delay(5);
-	gpio_C_rd[1] = GPIOC->IDR;
-
-
-	////temp = GPIOx->PUPDR;
-	////temp &= ~(GPIO_PUPDR_PUPDR0 << (position * 2U));
-	////temp |= ((GPIO_Init->Pull) << (position * 2U));
-	////GPIOx->PUPDR = temp;
-}
+//void GPIO_Selftest_step_1_single(){
+//	/* 1 - Input pullup read
+//	 * 2 - Input pulldown read
+//	 *
+//	 * 3 - Output pushpull
+//	 * 4 - Output opendrain
+//	 *
+//	 * 0xA800 0000 | Reset GPIOA_MODER
+//	 * 0x6400 0000 | Reset GPIOA_PUPDR
+//	 * */
+//
+//
+//	//uint32_t temp_mode, temp_pupdr; //
+//	//uint32_t posit = 0x00000001;
+//
+//	//GPIOC->MODER = 0x00000000U; //
+//	//GPIOC->PUPDR = 0x05555555U; //  All pullup
+//	//GPIOC->PUPDR = 0x0AAAAAAAU; //  All pulldown
+//
+//	temp_mode = GPIOC->MODER;
+//	temp_pupdr = GPIOC->PUPDR;
+//
+//	uint8_t sizearr = sizeof(List_GPIOC); // / sizeof(List_GPIOC[0])
+//
+//
+//	//// ------------------ Input PULLUP ------------------------------
+//	for(register int i = 0;i < sizearr; i++){
+//		temp_mode &= ~( 0b11 << (List_GPIOC[i] * 2U)); // clear only 2 register want to reconfig by shift 11 to prefer position then & it's invert to the previous read
+//		temp_mode |= ( GPIO_MODE_INPUT << (List_GPIOC[i] * 2U));
+//	}
+//	GPIOC->MODER = temp_mode;
+//
+//
+//	for(register int i = 0;i < sizearr; i++){
+//		temp_pupdr &= ~( 0b11 << (List_GPIOC[i] * 2U)); // clear only 2 register want to reconfig by shift 11 to prefer position then & it's invert to the previous read
+//		temp_pupdr |= ( GPIO_PULLUP << (List_GPIOC[i] * 2U));
+//	}
+//	GPIOC->PUPDR = temp_pupdr;
+//	HAL_Delay(5);
+//	gpio_C_rd[0] = GPIOC->IDR;
+//
+//	//// ------------------ Input PULLDOWN ------------------------------
+//	for(register int i = 0;i < sizearr; i++){
+//		temp_pupdr &= ~( 0b11 << (List_GPIOC[i] * 2U)); // clear only 2 register want to reconfig by shift 11 to prefer position then & it's invert to the previous read
+//		temp_pupdr |= ( GPIO_PULLDOWN << (List_GPIOC[i] * 2U));
+//	}
+//	GPIOC->PUPDR = temp_pupdr;
+//	HAL_Delay(5);
+//	gpio_C_rd[1] = GPIOC->IDR;
+//
+//
+//	////temp = GPIOx->PUPDR;
+//	////temp &= ~(GPIO_PUPDR_PUPDR0 << (position * 2U));
+//	////temp |= ((GPIO_Init->Pull) << (position * 2U));
+//	////GPIOx->PUPDR = temp;
+//}
 
 
 
@@ -841,10 +862,27 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 		}else{
 			__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, 3000);
 		}
+
+//		TIM_OC_InitTypeDef sconff;
+//		sconff.OCMode = TIM_OCMODE_FORCED_ACTIVE;
+//		HAL_TIM_OC_ConfigChannel(&htim3, sconff, TIM_CHANNEL_1);
+
+//// RM0383 p362 OC1M
+//// 0b100 - low / 0b101 - high / 0b110 - pWM 1
+//		uint32_t trd = TIM3->CCMR1;
+//		trd &= ~(0b111 << 4);
+//		trd |= ( GPIO_MODE_OUTPUT_PP << 4);
+
 #endif
 
-
 		}
+}
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+	Rx_Verita_engine_callBak(RxBufferMtCl, &VR_Cli); //// try using only 1 slot 9 Buffer
+	Tx_Rq_Verita_engine(&huart6, &VR_Cli);
+	//HAL_UART_Receive_DMA(&huart6, &RxBufferMtCl[0], 9);
 }
 
 /* USER CODE END 4 */
