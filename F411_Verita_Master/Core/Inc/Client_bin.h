@@ -17,6 +17,7 @@
  * */
 
 #define client_bin_en
+#define client_bin_Ver 0x01000323 // 01 00 03 23  -- ver day month year 32-bit
 
 #ifdef client_bin_en
 

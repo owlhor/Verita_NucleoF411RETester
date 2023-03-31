@@ -43,6 +43,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdarg.h>
+#include <inttypes.h> //// print uint32_t %08X
 
 #include "LCDrv_f4_spi/Fonts/fonts.h"
 #include "LCDrv_f4_spi/ili9341.h"
@@ -65,6 +66,8 @@
 /* USER CODE BEGIN PD */
 #define INA219_Wrk
 #define Current_limit_mA 900
+#define Current_treash_mA 600
+#define MCUTemp_treash 60
 
 #define ff_runfull 3
 /* USER CODE END PD */
@@ -159,6 +162,7 @@ struct _grandScript{
 	uint8_t fullflag; //// flag indicate full script run
 	uint8_t counter_overcurrent;
 	uint32_t timelog; // use to stamp time for like count up 3 sec
+	uint8_t hchk_pass;
 } gScr;
 
 static enum _GrandState{
@@ -187,15 +191,15 @@ uint16_t List_GPIOA[] = {0,1,    4,5,6,7,8,9,10,            15,  20}; // 2,3 STL
 uint16_t List_GPIOB[] = {0,1,2,  4,5,6,7,8,9,10,   12,13,14,15,  20}; // 11 is Vcap
 uint16_t List_GPIOC[] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,        20};
 
-char WR_A_PUPDR[30] = "\r\nA_PUR: "; ////
-char WR_B_PUPDR[30] = "\r\nB_PUR: ";
-char WR_C_PUPDR[30] = "\r\nC_PUR: ";
-char WR_A_OPP[30]   = "\r\nA_OPP: "; ////
-char WR_B_OPP[30]   = "\r\nB_OPP: ";
-char WR_C_OPP[30]   = "\r\nC_OPP: ";
-char WR_A_OOD[30]   = "\r\nA_OOD: ";
-char WR_B_OOD[30]   = "\r\nB_OOD: ";
-char WR_C_OOD[30]   = "\r\nC_OOD: ";
+char WR_A_PUPDR[30] = "A_PUR: "; ////
+char WR_B_PUPDR[30] = "B_PUR: ";
+char WR_C_PUPDR[30] = "C_PUR: ";
+char WR_A_OPP[30]   = "A_OPP: "; ////
+char WR_B_OPP[30]   = "B_OPP: ";
+char WR_C_OPP[30]   = "C_OPP: ";
+char WR_A_OOD[30]   = "A_OOD: ";
+char WR_B_OOD[30]   = "B_OOD: ";
+char WR_C_OOD[30]   = "C_OOD: ";
 
 uint32_t UA_BL_Break; //// buffer for write GPIOA->AFR
 
@@ -240,22 +244,22 @@ const bposxyType bposxy_lobby = {
 		{240, 60, 90, 120, 150, 180, 220}
 };
 
-const bposxyType bposxy_lobba = {
-		6,
-		{320,   0, 40, 80, 120, 160},
-		{240, 220, 60, 90, 120, 150}
+const bposxyType bposxy_lobfw = {
+		4,
+		{320, 20, 20,  10},
+		{240, 60, 100, 220}
 };
 
 bposxyType bposxy[4] = {
 		bposxy_def,
 		bposxy_lobby,
-		bposxy_lobba,
+		bposxy_lobfw,
 		bposxy_no
 };
 const enum _bpoxy{
 	bpoxy_def,
 	bpoxy_lobby,
-	bpoxy_lobba,
+	bpoxy_lobfw,
 	bpoxy_no
 }bpoxy;
 
@@ -304,6 +308,7 @@ void Compare_pin_32(uint32_t raw32, uint16_t *Lista_GPIOx, uint8_t gpst,char *ou
 
 void gpio_BL_UART_activate();
 void gpio_BL_UART_Deactivate();
+void resetgpio_char();
 
 float ADCTVolta(uint16_t btt);
 float TempEquat(float Vs);
@@ -492,7 +497,10 @@ int main(void)
 		   *  - Client's MCU temp rwquest
 		   * */
 
-		  Tx_UART_Verita_Command(&huart6, VRC_Request, VR_CPU_Temp);// request first > pending > convert
+		  if(GrandState != pre_gpio_chk){
+			  Tx_UART_Verita_Command(&huart6, VRC_Request, VR_CPU_Temp);// request first > pending > convert
+		  }
+
 
 		  inata.Bus_V   = INA219Read_BusV(&hi2c1, INA219_ADDR_1);
 		  inata.CURRENT = INA219Read_Current(&hi2c1, INA219_ADDR_1);
@@ -1290,24 +1298,49 @@ void GrandState_Verita(){
 	case init:
 		stboxp.choice_set = bpoxy_def;
 
-//		//// test write bootloader
-//		// find n times must be loop to upload all code
-//		bootloop_n = (boot_size / 256) + ((boot_size % 256)>0 ? 1:0);
-//		//bootloop_n = (uint8_t)ceil(boot_size / 256.0);
-//
-//		// case 31452 -> b must be loop 123 times
-//		for(register int b = 0;b < bootloop_n - 1;b++){
-//			BL_UART_WriteMem_d(&huart1, 0x08000000 + (b*0x100), 255, &F411_Verita_Client[0x100*b]);
-//		}
-//		//// last round: send only left bit (less 255)
-//		HAL_Delay(2);
-//		BL_UART_WriteMem_d(&huart1, 0x08000000 + ((bootloop_n-1)*0x100), boot_size % 256, &F411_Verita_Client[0x100*(bootloop_n-1)]);
-
 		BL_UART_Start(&huart1);
 		BL_UART_ExtendEraseMem_SP(&huart1, Erase_MASS_CMD);
 		BL_UART_Finish();
 
 		GrandState = lobby;
+		break;
+
+	case pre_fw_lob:
+		stboxp.choice_set = bpoxy_lobfw;
+		ili9341_FillRect(0, 30, 320, 210, cl_BLACK);
+		ili9341_FillRect(0, 0, 320, 30, cl_PURPLE);
+
+		sprintf(TextDispBuffer,"Firmware Lobby");
+		ili9341_WriteStringNoBG(60, 5, TextDispBuffer, Font20, cl_WHITE);
+
+		sprintf(TextDispBuffer,"Firmware Upload");
+		ili9341_WriteStringNoBG(50, 60, TextDispBuffer, Font16, cl_CYAN);
+
+		sprintf(TextDispBuffer,"FW ver: %08X", client_bin_Ver);
+		ili9341_WriteStringNoBG(50, 80, TextDispBuffer, Font12, cl_WHITE);
+
+		sprintf(TextDispBuffer,"Erase Flash");
+		ili9341_WriteStringNoBG(50, 100, TextDispBuffer, Font16, cl_CYAN);
+
+		sprintf(TextDispBuffer,"<-Back");
+		ili9341_WriteStringNoBG(30, 220, TextDispBuffer, Font16, cl_WHITE);
+
+
+		k_flag.cnt = 0;
+		GrandState = fw_lob;
+		break;
+
+	case fw_lob:
+
+		if(k_flag.cnt){
+
+			if(stboxp.ch_is == 1){GrandState = pre_bootloader;}
+			//if(stboxp.ch_is == 2){GrandState = pre_bootloader;} // erase only
+			if(stboxp.ch_is == 3){GrandState = pre_lobby;}
+
+		k_flag.cnt = 0;
+		}
+
 		break;
 
 	case pre_hw_chk:
@@ -1321,17 +1354,16 @@ void GrandState_Verita(){
 		sprintf(TextDispBuffer,"Hardware_Chk");
 		ili9341_WriteStringNoBG(60, 5, TextDispBuffer, Font20, cl_WHITE);
 
-
 		sprintf(TextDispBuffer,"5Vin:");
 		ili9341_WriteStringNoBG(15, 50, TextDispBuffer, Font16, cl_WHITE);
 
 		sprintf(TextDispBuffer,"3V3:");
 		ili9341_WriteStringNoBG(15, 75, TextDispBuffer, Font16, cl_WHITE);
 
-		sprintf(TextDispBuffer,"3V3");
+		sprintf(TextDispBuffer,"3V3:");
 		ili9341_WriteStringNoBG(15, 95, TextDispBuffer, Font16, cl_WHITE);
 		sprintf(TextDispBuffer,"STLink");
-		ili9341_WriteStringNoBG(15, 113, TextDispBuffer, Font12, cl_WHITE);
+		ili9341_WriteStringNoBG(15, 106, TextDispBuffer, Font12, cl_WHITE);
 
 		sprintf(TextDispBuffer,"I Brd:");
 		ili9341_WriteStringNoBG(15, 125, TextDispBuffer, Font16, cl_WHITE);
@@ -1339,11 +1371,11 @@ void GrandState_Verita(){
 		sprintf(TextDispBuffer,"I MCU:");
 		ili9341_WriteStringNoBG(15, 150, TextDispBuffer, Font16, cl_WHITE);
 
-		sprintf(TextDispBuffer,"mV"); ili9341_WriteStringNoBG(150, 54, TextDispBuffer, Font12, cl_WHITE);
-		sprintf(TextDispBuffer,"mV"); ili9341_WriteStringNoBG(150, 79, TextDispBuffer, Font12, cl_WHITE);
-		sprintf(TextDispBuffer,"mV"); ili9341_WriteStringNoBG(150, 104, TextDispBuffer, Font12, cl_WHITE);
-		sprintf(TextDispBuffer,"mA"); ili9341_WriteStringNoBG(150, 129, TextDispBuffer, Font12, cl_WHITE);
-		sprintf(TextDispBuffer,"mA"); ili9341_WriteStringNoBG(150, 154, TextDispBuffer, Font12, cl_WHITE);
+		sprintf(TextDispBuffer,"mV"); ili9341_WriteStringNoBG(165, 54, TextDispBuffer, Font12, cl_WHITE);
+		sprintf(TextDispBuffer,"mV"); ili9341_WriteStringNoBG(165, 79, TextDispBuffer, Font12, cl_WHITE);
+		sprintf(TextDispBuffer,"mV"); ili9341_WriteStringNoBG(165, 104, TextDispBuffer, Font12, cl_WHITE);
+		sprintf(TextDispBuffer,"mA"); ili9341_WriteStringNoBG(165, 129, TextDispBuffer, Font12, cl_WHITE);
+		sprintf(TextDispBuffer,"mA"); ili9341_WriteStringNoBG(165, 154, TextDispBuffer, Font12, cl_WHITE);
 
 
 		gScr.timelog = HAL_GetTick() + 3500;
@@ -1353,6 +1385,54 @@ void GrandState_Verita(){
 		break; //pre_hw_chk
 	case hw_chk:
 		stboxp.choice_set = bpoxy_def;
+
+		//// 5V
+		sprintf(TextDispBuffer,"%4d", inatb.Bus_V);
+		if(inatb.Bus_V <= 4000){
+			ili9341_WriteString(100, 50, TextDispBuffer, Font20, cl_RED, cl_BLACK);
+			sprintf(TextDispBuffer,"FAIL"); ili9341_WriteString(220, 50, TextDispBuffer, Font20, cl_RED, cl_BLACK);
+		}else{
+			ili9341_WriteString(100, 50, TextDispBuffer, Font20, cl_WHITE, cl_BLACK);
+			sprintf(TextDispBuffer,"PASS"); ili9341_WriteString(220, 50, TextDispBuffer, Font20, cl_GREEN, cl_BLACK);
+			}
+		//// 3V3
+		sprintf(TextDispBuffer,"%4d", inata.Bus_V);
+		if(inata.Bus_V <= 2800){
+			ili9341_WriteString(100, 75, TextDispBuffer, Font20, cl_RED, cl_BLACK);
+			sprintf(TextDispBuffer,"FAIL"); ili9341_WriteString(220, 75, TextDispBuffer, Font20, cl_RED, cl_BLACK);
+		}else{
+			ili9341_WriteString(100, 75, TextDispBuffer, Font20, cl_WHITE, cl_BLACK);
+			sprintf(TextDispBuffer,"PASS"); ili9341_WriteString(220, 75, TextDispBuffer, Font20, cl_GREEN, cl_BLACK);
+			}
+		//// 3V3 STLink
+		sprintf(TextDispBuffer,"%d", (uint16_t)(mcp_read.cv[0]*1000));
+		if(mcp_read.cv[0] <= 2.80){
+			ili9341_WriteString(100, 100, TextDispBuffer, Font20, cl_RED, cl_BLACK);
+			sprintf(TextDispBuffer,"FAIL"); ili9341_WriteString(220, 100, TextDispBuffer, Font20, cl_RED, cl_BLACK);
+		}else{
+			ili9341_WriteString(100, 100, TextDispBuffer, Font20, cl_WHITE, cl_BLACK);
+			sprintf(TextDispBuffer,"PASS"); ili9341_WriteString(220, 100, TextDispBuffer, Font20, cl_GREEN, cl_BLACK);
+			}
+		 //// I Brd
+		sprintf(TextDispBuffer,"%4d", inatb.CURRENT);
+		if(inatb.CURRENT >= Current_treash_mA){
+			ili9341_WriteString(100, 125, TextDispBuffer, Font20, cl_RED, cl_BLACK);
+			sprintf(TextDispBuffer,"FAIL"); ili9341_WriteString(220, 125, TextDispBuffer, Font20, cl_RED, cl_BLACK);
+		}else{
+			ili9341_WriteString(100, 125, TextDispBuffer, Font20, cl_WHITE, cl_BLACK);
+			sprintf(TextDispBuffer,"PASS"); ili9341_WriteString(220, 125, TextDispBuffer, Font20, cl_GREEN, cl_BLACK);
+			}
+
+		//// I MCU
+		sprintf(TextDispBuffer,"%4d", inata.CURRENT);
+		if(inata.CURRENT >= Current_treash_mA){
+			ili9341_WriteString(100, 150, TextDispBuffer, Font20, cl_RED, cl_BLACK);
+			sprintf(TextDispBuffer,"FAIL"); ili9341_WriteString(220, 150, TextDispBuffer, Font20, cl_RED, cl_BLACK);
+		}else{
+			ili9341_WriteString(100, 150, TextDispBuffer, Font20, cl_WHITE, cl_BLACK);
+			sprintf(TextDispBuffer,"PASS"); ili9341_WriteString(220, 150, TextDispBuffer, Font20, cl_GREEN, cl_BLACK);
+			//sprintf(TextDispBuffer,"MCU"); ili9341_WriteStringNoBG(280, 150, TextDispBuffer, Font16, cl_YELLOW);
+			}
 
 
 		sprintf(TextDispBuffer,"<-Back");
@@ -1364,7 +1444,9 @@ void GrandState_Verita(){
 		 * 		if pressed or 3 sec pass -> go bootloader
 		 * else force back lobby & turnoff relay.
 		 * */
-		if(k_flag.cnt){ //|| HAL_GetTick() >= gScr.timelog
+		if(HAL_GetTick() >= gScr.timelog){
+
+			if(k_flag.cnt){
 
 			if(gScr.fullflag == ff_runfull){
 
@@ -1373,7 +1455,11 @@ void GrandState_Verita(){
 			else{
 				GrandState = pre_lobby;
 			}
+			k_flag.cnt = 0;
+
+			}
 		}
+
 
 		break; //hw_chk
 
@@ -1389,10 +1475,15 @@ void GrandState_Verita(){
 
 		sprintf(TextDispBuffer," .bin script is booting...");
 		ili9341_WriteStringNoBG(20, 60, TextDispBuffer, Font16, cl_WHITE);
+
+		sprintf(TextDispBuffer,"Firmware ver: %08X", client_bin_Ver);
+		ili9341_WriteStringNoBG(40, 80, TextDispBuffer, Font16, cl_DARKGREY);
+
 		sprintf(TextDispBuffer,"Don't pluck  off");
 		ili9341_WriteStringNoBG(40, 110, TextDispBuffer, Font20, cl_WHITE);
 		sprintf(TextDispBuffer,"the client board");
 		ili9341_WriteStringNoBG(40, 135, TextDispBuffer, Font20, cl_ORANGE);
+
 
 		k_flag.cnt = 0;
 		GrandState = s_bootloader;
@@ -1426,8 +1517,10 @@ void GrandState_Verita(){
 
 		BL_UART_Finish();
 
-			sprintf(TextDispBuffer,"Finish");
-			ili9341_WriteStringNoBG(100, 160, TextDispBuffer, Font24, cl_GREEN);
+		sprintf(TextDispBuffer,"Finish");
+		ili9341_WriteStringNoBG(100, 160, TextDispBuffer, Font24, cl_GREEN);
+		////wait for user to realise finish
+		HAL_Delay(1000);
 
 		//// disable UART, disable after endboot, prevent misunderstanding when GPIO test
 		gpio_BL_UART_Deactivate();
@@ -1435,6 +1528,7 @@ void GrandState_Verita(){
 		k_flag.cnt = 0;//// prevent over state jump
 		if(gScr.fullflag == ff_runfull){
 			GrandState = pre_gpio_chk;
+			gScr.timelog = HAL_GetTick() + 5000;
 		}else{
 			GrandState = pre_lobby;
 		}
@@ -1453,31 +1547,33 @@ void GrandState_Verita(){
 			sprintf(TextDispBuffer,"GPIO Selftest");
 			ili9341_WriteStringNoBG(60, 5, TextDispBuffer, Font20, cl_WHITE);
 
-			sprintf(TextDispBuffer,"PUPDR:");
-			ili9341_WriteStringNoBG(15, 50, TextDispBuffer, Font20, cl_WHITE);
-
-			sprintf(TextDispBuffer,"PP:");
-			ili9341_WriteStringNoBG(15, 85, TextDispBuffer, Font20, cl_WHITE);
-
-			sprintf(TextDispBuffer,"OD:");
-			ili9341_WriteStringNoBG(15, 120, TextDispBuffer, Font20, cl_WHITE);
+//			sprintf(TextDispBuffer,"PUR:");
+//			ili9341_WriteStringNoBG(15, 50, TextDispBuffer, Font20, cl_WHITE);
+//
+//			sprintf(TextDispBuffer,"PP:");
+//			ili9341_WriteStringNoBG(15, 85, TextDispBuffer, Font20, cl_WHITE);
+//
+//			sprintf(TextDispBuffer,"OD:");
+//			ili9341_WriteStringNoBG(15, 120, TextDispBuffer, Font20, cl_WHITE);
 
 			sprintf(TextDispBuffer,"MCU Temp:");
-			ili9341_WriteStringNoBG(15, 160, TextDispBuffer, Font16, cl_WHITE);
+			ili9341_WriteStringNoBG(250, 175, TextDispBuffer, Font12, cl_WHITE);
 
 			sprintf(TextDispBuffer,"FWID:");
-			ili9341_WriteStringNoBG(15, 185, TextDispBuffer, Font16, cl_WHITE);
+			ili9341_WriteStringNoBG(250, 210, TextDispBuffer, Font12, cl_WHITE);
 
 			sprintf(TextDispBuffer,"Finish >> ");
-			ili9341_WriteStringNoBG(250, 220, TextDispBuffer, Font16, cl_WHITE);
+			ili9341_WriteStringNoBG(30, 220, TextDispBuffer, Font16, cl_WHITE);
 
 
 			//// checkif GPIO test is finished ?
-			if(VRB_CL.Mark.Flag_next){ // runalltest cplt
+			if(VRB_CL.Mark.Flag_next || HAL_GetTick() >= gScr.timelog){ // runalltest cplt
 				Tx_UART_Verita_Command(&huart6, VRC_Flag_ger, VRF_SendALLTestData);
 				HAL_Delay(100);
 
 				if(VRB_CL.Mark.Flag_ger == VRF_SendALLTestData){ //// 'll send this flag back after cplt
+
+					resetgpio_char();
 
 					Compare_pin_32(VRB_CL.Mark.PA_PUPDR, List_GPIOA, 0, WR_A_PUPDR);
 					Compare_pin_32(VRB_CL.Mark.PA_OUT_PP, List_GPIOA, 0, WR_A_OPP);
@@ -1491,23 +1587,55 @@ void GrandState_Verita(){
 					Compare_pin_32(VRB_CL.Mark.PC_OUT_PP, List_GPIOC, 2, WR_C_OPP);
 					Compare_pin_32(VRB_CL.Mark.PC_OUT_OD, List_GPIOC, 2, WR_C_OOD);
 
+					 sprintf(TextDispBuffer, WR_A_PUPDR); ili9341_WriteStringNoBG(10, 35, TextDispBuffer, Font16, cl_WHITE);
+
+					 sprintf(TextDispBuffer, WR_A_OPP); ili9341_WriteStringNoBG(10, 55, TextDispBuffer, Font16, cl_WHITE);
+
+					 sprintf(TextDispBuffer, WR_A_OOD); ili9341_WriteStringNoBG(10, 75, TextDispBuffer, Font16, cl_WHITE);
+
+					 sprintf(TextDispBuffer, WR_B_PUPDR); ili9341_WriteStringNoBG(10, 95, TextDispBuffer, Font16, cl_WHITE);
+
+					 sprintf(TextDispBuffer, WR_B_OPP); ili9341_WriteStringNoBG(10, 115, TextDispBuffer, Font16, cl_WHITE);
+
+					 sprintf(TextDispBuffer, WR_B_OOD); ili9341_WriteStringNoBG(10, 135, TextDispBuffer, Font16, cl_WHITE);
+
+					 sprintf(TextDispBuffer, WR_C_PUPDR); ili9341_WriteStringNoBG(10, 155, TextDispBuffer, Font16, cl_WHITE);
+
+					 sprintf(TextDispBuffer, WR_C_OPP); ili9341_WriteStringNoBG(10, 175, TextDispBuffer, Font16, cl_WHITE);
+
+					 sprintf(TextDispBuffer, WR_C_OOD); ili9341_WriteStringNoBG(10, 195, TextDispBuffer, Font16, cl_WHITE);
+
 					VRB_CL.Mark.Flag_ger = 0;
 					VRB_CL.Mark.Flag_next = 0;
 					GrandState = gpio_chk;
 				}
+				//// temporary dummy
+				GrandState = gpio_chk;
 			}
+			k_flag.cnt = 0;
 			break; //// pre_gpio_chk
 
 		case gpio_chk:
 			stboxp.choice_set = bpoxy_def;
 
 
+			sprintf(TextDispBuffer,"%2.1f C", (client_temp_mcuCC < 0) ? 0 : client_temp_mcuCC);
+			if(client_temp_mcuCC < MCUTemp_treash){
+					ili9341_WriteString(250, 190, TextDispBuffer, Font16, cl_LIGHTGREY, cl_BLACK);
+			}else{
+					ili9341_WriteString(250, 190, TextDispBuffer, Font16, cl_RED, cl_BLACK);
+			}
+
+			sprintf(TextDispBuffer,"%08x", (uint)VRB_CL.Mark.FirmwareVer);
+			ili9341_WriteStringNoBG(250, 225, TextDispBuffer, Font12, cl_WHITE);
+
 
 			if(k_flag.cnt && stboxp.ch_is == 1){ //// Back to lobby
-					GrandState = pre_lobby;
-					k_flag.cnt = 0;
-					HAL_GPIO_WritePin(RelayClient_GPIO_Port, RelayClient_Pin, GPIO_PIN_RESET);
-					}
+				GrandState = pre_lobby;
+				k_flag.cnt = 0;
+				gScr.fullflag = 0;
+				HAL_GPIO_WritePin(RelayClient_GPIO_Port, RelayClient_Pin, GPIO_PIN_RESET);
+				}
 			break; //gpio_chk
 
 	case pre_monitor:
@@ -1549,6 +1677,8 @@ void GrandState_Verita(){
 
 		sprintf(TextDispBuffer,"MCP3208");
 		ili9341_WriteStringNoBG(220, 40, TextDispBuffer, Font16, cl_WHITE);
+		sprintf(TextDispBuffer,"Read Volt V");
+		ili9341_WriteStringNoBG(220, 56, TextDispBuffer, Font12, cl_WHITE);
 
 		sprintf(TextDispBuffer,"mV"); ili9341_WriteStringNoBG(150, 54, TextDispBuffer, Font12, cl_WHITE);
 		sprintf(TextDispBuffer,"mV"); ili9341_WriteStringNoBG(150, 79, TextDispBuffer, Font12, cl_WHITE);
@@ -1559,10 +1689,10 @@ void GrandState_Verita(){
 
 		for(register int t = 0; t < 7; t++){
 			sprintf(TextDispBuffer,"CH%d",t);
-			ili9341_WriteStringNoBG(220, 65 + (12*t), TextDispBuffer, Font12, cl_YELLOW);
+			ili9341_WriteStringNoBG(220, 75 + (12*t), TextDispBuffer, Font12, cl_YELLOW);
 		}
 
-		sprintf(TextDispBuffer,"MCU_Cl_Temp:");
+		sprintf(TextDispBuffer,"MCU_Temp:");
 		ili9341_WriteString(20, 190, TextDispBuffer, Font12, cl_WHITE, cl_BLACK);
 
 		k_flag.cnt = 0; //// prevent over state jump
@@ -1599,18 +1729,19 @@ void GrandState_Verita(){
 		ili9341_WriteString(95, 170, TextDispBuffer, Font16, cl_ORANGE, cl_BLACK);
 
 		//// MCP3208 ADC Raw Read
-		ili9341_FillRect(250, 65, 30, 84, cl_BLACK);
+		ili9341_FillRect(250, 75, 30, 84, cl_BLACK);
 		for(register int t = 0; t < 7; t++){
-			sprintf(TextDispBuffer,"%d",mcp_read.raw[t]);
-		ili9341_WriteStringNoBG(250, 65 + (12*t), TextDispBuffer, Font12, cl_WHITE);
+			sprintf(TextDispBuffer,"%.2f",mcp_read.cv[t]);
+		ili9341_WriteStringNoBG(250, 75 + (12*t), TextDispBuffer, Font12, cl_WHITE);
 		}
 
 		//// Client's CPU Temp
-		sprintf(TextDispBuffer,"%2.1f C", client_temp_mcuCC);
-			if(client_temp_mcuCC < 65){
-				ili9341_WriteString(120, 190, TextDispBuffer, Font16, cl_LIGHTGREY, cl_BLACK);
+		sprintf(TextDispBuffer,"%2.1f C", (client_temp_mcuCC < 0) ? 0 : client_temp_mcuCC);
+		//sprintf(TextDispBuffer,"%2.1f C", client_temp_mcuCC);
+			if(client_temp_mcuCC < MCUTemp_treash){
+				ili9341_WriteString(100, 190, TextDispBuffer, Font16, cl_LIGHTGREY, cl_BLACK);
 			}else{
-				ili9341_WriteString(120, 190, TextDispBuffer, Font16, cl_RED, cl_BLACK);
+				ili9341_WriteString(100, 190, TextDispBuffer, Font16, cl_RED, cl_BLACK);
 			}
 
 
@@ -1716,6 +1847,21 @@ void gpio_BL_UART_Deactivate(){
 		 tyyy |= ( GPIO_NOPULL << (9 * 2U));
 		 tyyy |= ( GPIO_NOPULL << (10 * 2U));
 		 GPIOA->PUPDR = tyyy;
+}
+
+void resetgpio_char(){
+
+	sprintf(WR_A_PUPDR, "A_PUR: ");
+	sprintf(WR_B_PUPDR, "B_PUR: ");
+	sprintf(WR_C_PUPDR, "C_PUR: ");
+
+	sprintf(WR_A_OPP, "A_OPP: ");
+	sprintf(WR_B_OPP, "B_OPP: ");
+	sprintf(WR_C_OPP, "C_OPP: ");
+
+	sprintf(WR_A_OOD, "A_OOD: ");
+	sprintf(WR_B_OOD, "B_OOD: ");
+	sprintf(WR_C_OOD, "C_OOD: ");
 }
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){

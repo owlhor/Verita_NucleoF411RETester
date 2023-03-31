@@ -49,7 +49,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define FIRMWARE_VER 0x03300323 // 01 00 03 23  -- ver day month year 32-bit
+#define FIRMWARE_VER 0x04310323 // 01 00 03 23  -- ver day month year 32-bit
 //#define TIMx_PWM_En
 //#define GPIO_SELFTEST_SC
 /* USER CODE END PD */
@@ -141,6 +141,7 @@ float TempEquat(float Vs);
 void GPIO_Selftest_step_1_single();
 void Compare_pin();
 void Compare_pin_32(uint32_t raw32, uint16_t *Lista_GPIOx, uint8_t gpst, char *outchar);
+void resetgpio_char();
 //void Tx_UART_Verita_Packet_u8(UART_HandleTypeDef *huart, uint8_t regis,uint8_t *pdata, uint8_t size);
 //void Tx_UART_Verita_Packet_u32(UART_HandleTypeDef *huart, uint8_t regis,uint32_t pdata);
 /* USER CODE END PFP */
@@ -269,7 +270,6 @@ int main(void)
 
 	  if(flag_gpioselftest){
 
-
 		  //// ---------- Verita send 1 set --------------------------
 		  static uint8_t gg = 0x66;
 		  static uint8_t rg = 0x03;
@@ -317,7 +317,9 @@ int main(void)
 		  GPIOA->MODER = gpio_rec_mode[0] ;
 		  GPIOA->PUPDR = gpio_rec_pupdr[0] ;
 
-		  //Compare_pin();
+		  //// clear previous buffer
+		  resetgpio_char();
+		  ////Compare_pin()
 		  Compare_pin_32(VR_Cli.Mark.PA_PUPDR, List_GPIOA, 0, WR_A_PUPDR);
 		  Compare_pin_32(VR_Cli.Mark.PA_OUT_PP, List_GPIOA, 0, WR_A_OPP);
 		  Compare_pin_32(VR_Cli.Mark.PA_OUT_OD, List_GPIOA, 0, WR_A_OOD);
@@ -359,10 +361,12 @@ int main(void)
 		  Tx_UART_Verita_Packet_u32(&huart6, VR_PB_OUT_OD, VR_Cli.Mark.PB_OUT_OD);
 		  Tx_UART_Verita_Packet_u32(&huart6, VR_PC_OUT_OD, VR_Cli.Mark.PC_OUT_OD);
 
-		  HAL_Delay(10);
+		  Tx_UART_Verita_Packet_u32(&huart6, VR_FWID, VR_Cli.Mark.FirmwareVer);
+
+		  HAL_Delay(15);
 
 		  Tx_UART_Verita_Command(&huart6, VRC_Flag_aa, 0xFF);
-		  Tx_UART_Verita_Command(&huart6, VRC_Flag_ger, 0x04);
+		  Tx_UART_Verita_Command(&huart6, VRC_Flag_ger, VRF_SendALLTestData);
 		  VR_Cli.Mark.Flag_ger = 0;
 
 	  }
@@ -775,6 +779,21 @@ void Compare_pin_32(uint32_t raw32, uint16_t *Lista_GPIOx, uint8_t gpst,char *ou
 	}
 }
 
+void resetgpio_char(){
+
+	sprintf(WR_A_PUPDR, "\r\nA_PUR: ");
+	sprintf(WR_B_PUPDR, "\r\nB_PUR: ");
+	sprintf(WR_C_PUPDR, "\r\nC_PUR: ");
+
+	sprintf(WR_A_OPP, "\r\nA_OPP: ");
+	sprintf(WR_B_OPP, "\r\nB_OPP: ");
+	sprintf(WR_C_OPP, "\r\nC_OPP: ");
+
+	sprintf(WR_A_OOD, "\r\nA_OOD: ");
+	sprintf(WR_B_OOD, "\r\nB_OOD: ");
+	sprintf(WR_C_OOD, "\r\nC_OOD: ");
+}
+
 //void GPIO_Selftest_step_1_single(){
 //	/* 1 - Input pullup read
 //	 * 2 - Input pulldown read
@@ -841,8 +860,11 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 		bluecounter++;
 		bluecounter%=4;
 
-		flag_gpioselftest = 1;
+		//flag_gpioselftest = 1;
 		VR_Cli.Mark.Flag_ger = VRF_GPIO_Runalltest;
+
+//		Tx_UART_Verita_Command(&huart6, VRC_Flag_aa, 0xFF);
+//		Tx_UART_Verita_Command(&huart6, VRC_Flag_ger, VRF_SendALLTestData);
 
 
 #ifdef TIMx_PWM_En
