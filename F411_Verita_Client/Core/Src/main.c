@@ -49,7 +49,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define FIRMWARE_VER 0x04310323 // 01 00 03 23  -- ver day month year 32-bit
+#define FIRMWARE_VER 0x06010523 // 01 00 03 23  -- ver day month year 32-bit
 //#define TIMx_PWM_En
 //#define GPIO_SELFTEST_SC
 /* USER CODE END PD */
@@ -82,6 +82,7 @@ float cputempCC = 0;
 uint8_t bluecounter = 0;
 uint8_t counter_flagger = 0; // countif testscript is runned
 uint32_t timestamp_one = 0;
+uint32_t timestamp_selftestdelay = 0;
 
 
 //// --------- GPIO Read Buffer --------
@@ -191,6 +192,9 @@ int main(void)
   char temp[]="----------------- F411_Verita_Client --------------------\r\n";
   HAL_UART_Transmit(&huart2, (uint8_t*)temp, strlen(temp),10);
 
+  sprintf(uartTXBf, "Firmware ver: %08X \r\n ", FIRMWARE_VER);
+  HAL_UART_Transmit(&huart2, (uint8_t*)uartTXBf, strlen(uartTXBf),10);
+
   ////  ------------- UART Recieve : Circular DMA here--------------------------
   //HAL_UART_Receive_DMA(&huart6, &RxBufferMtCl[0], RxbufferSize_VRT);
 
@@ -271,20 +275,25 @@ int main(void)
 	  if(flag_gpioselftest){
 
 		  //// ---------- Verita send 1 set --------------------------
-		  static uint8_t gg = 0x66;
-		  static uint8_t rg = 0x03;
-		  uint8_t ggg[4] = {0x00, 0x11, 0x33, gg};
-		  Tx_UART_Verita_Packet_u8(&huart6, rg, ggg, sizeof(ggg));
+//		  static uint8_t gg = 0x66;
+//		  static uint8_t rg = 0x03;
+//		  uint8_t ggg[4] = {0x00, 0x11, 0x33, gg};
+//		  Tx_UART_Verita_Packet_u8(&huart6, rg, ggg, sizeof(ggg));
+//
+//		  gg++; rg++;
+//
+//		  Tx_UART_Verita_Packet_u32(&huart6, VR_FWID, (uint32_t)FIRMWARE_VER);
+//
+//		  Tx_UART_Verita_Packet_u32(&huart6, 0x92, (uint32_t)0x00FF00AA);
+//		  Tx_UART_Verita_Packet_u32(&huart6, 0x13, 0x12); //// data request
+		  //// ------- old script ------------------
 
-		  gg++; rg++;
-
-		  Tx_UART_Verita_Packet_u32(&huart6, VR_FWID, (uint32_t)FIRMWARE_VER);
-
-		  Tx_UART_Verita_Packet_u32(&huart6, 0x92, (uint32_t)0x00FF00AA);
-		  Tx_UART_Verita_Packet_u32(&huart6, 0x13, 0x12); //// data request
 
 		  //VR_Cli.Mark.Flag_ger = 0x02;
-		  flag_gpioselftest = 0;
+		  if (HAL_GetTick() >= timestamp_selftestdelay){
+			  VR_Cli.Mark.Flag_ger = VRF_GPIO_Runalltest;
+			  flag_gpioselftest = 0;
+		  }
 
 	  }
 
@@ -860,8 +869,11 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 		bluecounter++;
 		bluecounter%=4;
 
-		//flag_gpioselftest = 1;
-		VR_Cli.Mark.Flag_ger = VRF_GPIO_Runalltest;
+
+		//VR_Cli.Mark.Flag_ger = VRF_GPIO_Runalltest; // use timestamp delay to trig instead
+		flag_gpioselftest = 1;
+		timestamp_selftestdelay = HAL_GetTick() + 600;
+
 
 //		Tx_UART_Verita_Command(&huart6, VRC_Flag_aa, 0xFF);
 //		Tx_UART_Verita_Command(&huart6, VRC_Flag_ger, VRF_SendALLTestData);
