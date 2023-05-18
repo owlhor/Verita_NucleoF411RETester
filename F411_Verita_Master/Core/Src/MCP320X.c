@@ -78,6 +78,8 @@ uint16_t MCP3208_READ_8_DataSPI(SPI_HandleTypeDef *hspi, MCP3208CHSelect M8_chan
 
 
 float MCP320x_ADCbit_to_Volt(uint16_t adcbit){
-	return adcbit * 0.00122; // 5/4096
+	//return adcbit * 0.00122; // 5/4096
+	//return adcbit * 0.001215; // 4.98/4096
+	return adcbit * 0.001225; // 5.02/4096
 }
 

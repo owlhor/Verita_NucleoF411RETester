@@ -33,8 +33,8 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
  ../Core/Src/LCDrv_f4_spi/Fonts/fonts.h \
  ../Core/Src/LCDrv_f4_spi/ili9341.h \
  ../Core/Src/LCDrv_f4_spi/Fonts/fonts.h ../Core/Src/LCDrv_f4_spi/bmp.h \
- ../Core/Inc/testimg.h ../Core/Inc/INA219.h ../Core/Inc/MCP320X.h \
- ../Core/Inc/Verita_PTC.h ../Core/Inc/Client_bin.h \
+ ../Core/Inc/testimg.h ../Core/Inc/persona_image.h ../Core/Inc/INA219.h \
+ ../Core/Inc/MCP320X.h ../Core/Inc/Verita_PTC.h ../Core/Inc/Client_bin.h \
  ../Core/Inc/bootloader_UART.h
 ../Core/Inc/main.h:
 ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal.h:
@@ -73,6 +73,7 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
 ../Core/Src/LCDrv_f4_spi/Fonts/fonts.h:
 ../Core/Src/LCDrv_f4_spi/bmp.h:
 ../Core/Inc/testimg.h:
+../Core/Inc/persona_image.h:
 ../Core/Inc/INA219.h:
 ../Core/Inc/MCP320X.h:
 ../Core/Inc/Verita_PTC.h:

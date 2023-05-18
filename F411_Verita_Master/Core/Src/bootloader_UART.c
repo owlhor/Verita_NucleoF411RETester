@@ -415,7 +415,7 @@ UARTBootloader_state BL_UART_ExtendEraseMem_SP(UART_HandleTypeDef *huart,UARTBoo
 		//// Byte  5 chksum
 		HAL_UART_Transmit(huart, &cmd[0], 3, 15);
 
-		response = BL_UART_wait_ACK(huart, 10);
+		response = BL_UART_wait_ACK(huart, 20);
 		if(response == UB_ACK){
 				return UB_ACK;
 
