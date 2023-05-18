@@ -49,7 +49,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define FIRMWARE_VER 0x06010523 // 01 00 03 23  -- ver day month year 32-bit
+#define FIRMWARE_VER 0x07010523 // 01 00 03 23  -- ver day month year 32-bit
 //#define TIMx_PWM_En
 //#define GPIO_SELFTEST_SC
 /* USER CODE END PD */
@@ -196,7 +196,7 @@ int main(void)
   HAL_UART_Transmit(&huart2, (uint8_t*)uartTXBf, strlen(uartTXBf),10);
 
   ////  ------------- UART Recieve : Circular DMA here--------------------------
-  //HAL_UART_Receive_DMA(&huart6, &RxBufferMtCl[0], RxbufferSize_VRT);
+  HAL_UART_Receive_DMA(&huart6, &RxBufferMtCl[0], RxbufferSize_VRT);
 
   VR_Cli.Mark.FirmwareVer = FIRMWARE_VER;
 
@@ -224,7 +224,7 @@ int main(void)
 	  //rslt = Rx_Verita_engine(RxBufferMtCl, &VR_Cli);
 	  //Tx_Rq_Verita_engine(&huart6, &VR_Cli);
 	  ////  ------------- UART Recieve : Normal DMA --------------------------
-	  HAL_UART_Receive_DMA(&huart6, &RxBufferMtCl[0], 9);
+	  //HAL_UART_Receive_DMA(&huart6, &RxBufferMtCl[0], 9);
 
 	  if(HAL_GetTick() >= timestamp_one){
 		  timestamp_one += 1000;

@@ -37,11 +37,11 @@ Idx Name          Size      VMA       LMA       File off  Algn
                   CONTENTS, READONLY, DEBUGGING, OCTETS
  16 .debug_macro  00018a0f  00000000  00000000  00034860  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 17 .debug_line   00011135  00000000  00000000  0004d26f  2**0
+ 17 .debug_line   00011134  00000000  00000000  0004d26f  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 18 .debug_str    0009b994  00000000  00000000  0005e3a4  2**0
+ 18 .debug_str    0009b994  00000000  00000000  0005e3a3  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 19 .comment      00000050  00000000  00000000  000f9d38  2**0
+ 19 .comment      00000050  00000000  00000000  000f9d37  2**0
                   CONTENTS, READONLY
  20 .debug_frame  00004f1c  00000000  00000000  000f9d88  2**2
                   CONTENTS, READONLY, DEBUGGING, OCTETS
@@ -2499,22 +2499,20 @@ int main(void)
  800169c:	f003 fe1f 	bl	80052de <HAL_UART_Transmit>
 
   ////  ------------- UART Recieve : Circular DMA here--------------------------
-  //HAL_UART_Receive_DMA(&huart6, &RxBufferMtCl[0], RxbufferSize_VRT);
+  HAL_UART_Receive_DMA(&huart6, &RxBufferMtCl[0], RxbufferSize_VRT);
+ 80016a0:	2209      	movs	r2, #9
+ 80016a2:	499f      	ldr	r1, [pc, #636]	; (8001920 <main+0x2f8>)
+ 80016a4:	489f      	ldr	r0, [pc, #636]	; (8001924 <main+0x2fc>)
+ 80016a6:	f003 feac 	bl	8005402 <HAL_UART_Receive_DMA>
 
   VR_Cli.Mark.FirmwareVer = FIRMWARE_VER;
- 80016a0:	4b9f      	ldr	r3, [pc, #636]	; (8001920 <main+0x2f8>)
- 80016a2:	4a9c      	ldr	r2, [pc, #624]	; (8001914 <main+0x2ec>)
- 80016a4:	649a      	str	r2, [r3, #72]	; 0x48
-  {
-
+ 80016aa:	4b9f      	ldr	r3, [pc, #636]	; (8001928 <main+0x300>)
+ 80016ac:	4a99      	ldr	r2, [pc, #612]	; (8001914 <main+0x2ec>)
+ 80016ae:	649a      	str	r2, [r3, #72]	; 0x48
 	  //rslt = Rx_Verita_engine(RxBufferMtCl, &VR_Cli);
 	  //Tx_Rq_Verita_engine(&huart6, &VR_Cli);
 	  ////  ------------- UART Recieve : Normal DMA --------------------------
-	  HAL_UART_Receive_DMA(&huart6, &RxBufferMtCl[0], 9);
- 80016a6:	2209      	movs	r2, #9
- 80016a8:	499e      	ldr	r1, [pc, #632]	; (8001924 <main+0x2fc>)
- 80016aa:	489f      	ldr	r0, [pc, #636]	; (8001928 <main+0x300>)
- 80016ac:	f003 fea9 	bl	8005402 <HAL_UART_Receive_DMA>
+	  //HAL_UART_Receive_DMA(&huart6, &RxBufferMtCl[0], 9);
 
 	  if(HAL_GetTick() >= timestamp_one){
  80016b0:	f001 f976 	bl	80029a0 <HAL_GetTick>
@@ -2545,7 +2543,7 @@ int main(void)
  80016e0:	f000 fc8c 	bl	8001ffc <CPUTempread>
  80016e4:	4603      	mov	r3, r0
  80016e6:	461a      	mov	r2, r3
- 80016e8:	4b8d      	ldr	r3, [pc, #564]	; (8001920 <main+0x2f8>)
+ 80016e8:	4b8f      	ldr	r3, [pc, #572]	; (8001928 <main+0x300>)
  80016ea:	f8a3 2044 	strh.w	r2, [r3, #68]	; 0x44
 
 		  cputempCC = TempEquat(ADCTVolta(cputmpraw));
@@ -2746,7 +2744,7 @@ int main(void)
  8001876:	429a      	cmp	r2, r3
  8001878:	d306      	bcc.n	8001888 <main+0x260>
 			  VR_Cli.Mark.Flag_ger = VRF_GPIO_Runalltest;
- 800187a:	4b29      	ldr	r3, [pc, #164]	; (8001920 <main+0x2f8>)
+ 800187a:	4b2b      	ldr	r3, [pc, #172]	; (8001928 <main+0x300>)
  800187c:	2202      	movs	r2, #2
  800187e:	f883 204c 	strb.w	r2, [r3, #76]	; 0x4c
 			  flag_gpioselftest = 0;
@@ -2759,7 +2757,7 @@ int main(void)
 
 	  //// Flag test
 	  if(VR_Cli.Mark.Flag_ger == VRF_GPIO_Runalltest){
- 8001888:	4b25      	ldr	r3, [pc, #148]	; (8001920 <main+0x2f8>)
+ 8001888:	4b27      	ldr	r3, [pc, #156]	; (8001928 <main+0x300>)
  800188a:	f893 304c 	ldrb.w	r3, [r3, #76]	; 0x4c
  800188e:	2b02      	cmp	r3, #2
  8001890:	f040 80e8 	bne.w	8001a64 <main+0x43c>
@@ -2789,21 +2787,21 @@ int main(void)
  80018b2:	481f      	ldr	r0, [pc, #124]	; (8001930 <main+0x308>)
  80018b4:	f7ff fcfd 	bl	80012b2 <gpio_selftest_input_pupdr_1>
  80018b8:	4603      	mov	r3, r0
- 80018ba:	4a19      	ldr	r2, [pc, #100]	; (8001920 <main+0x2f8>)
+ 80018ba:	4a1b      	ldr	r2, [pc, #108]	; (8001928 <main+0x300>)
  80018bc:	6053      	str	r3, [r2, #4]
 		  VR_Cli.Mark.PB_PUPDR = gpio_selftest_input_pupdr_1(GPIOB, List_GPIOB);
  80018be:	4930      	ldr	r1, [pc, #192]	; (8001980 <main+0x358>)
  80018c0:	4830      	ldr	r0, [pc, #192]	; (8001984 <main+0x35c>)
  80018c2:	f7ff fcf6 	bl	80012b2 <gpio_selftest_input_pupdr_1>
  80018c6:	4603      	mov	r3, r0
- 80018c8:	4a15      	ldr	r2, [pc, #84]	; (8001920 <main+0x2f8>)
+ 80018c8:	4a17      	ldr	r2, [pc, #92]	; (8001928 <main+0x300>)
  80018ca:	6113      	str	r3, [r2, #16]
 		  VR_Cli.Mark.PC_PUPDR = gpio_selftest_input_pupdr_1(GPIOC, List_GPIOC);
  80018cc:	492e      	ldr	r1, [pc, #184]	; (8001988 <main+0x360>)
  80018ce:	482f      	ldr	r0, [pc, #188]	; (800198c <main+0x364>)
  80018d0:	f7ff fcef 	bl	80012b2 <gpio_selftest_input_pupdr_1>
  80018d4:	4603      	mov	r3, r0
- 80018d6:	4a12      	ldr	r2, [pc, #72]	; (8001920 <main+0x2f8>)
+ 80018d6:	4a14      	ldr	r2, [pc, #80]	; (8001928 <main+0x300>)
  80018d8:	61d3      	str	r3, [r2, #28]
 
 		  HAL_Delay(5);
@@ -2815,31 +2813,31 @@ int main(void)
  80018e2:	4813      	ldr	r0, [pc, #76]	; (8001930 <main+0x308>)
  80018e4:	f7ff fd78 	bl	80013d8 <gpio_selftest_output_pp_1>
  80018e8:	4603      	mov	r3, r0
- 80018ea:	4a0d      	ldr	r2, [pc, #52]	; (8001920 <main+0x2f8>)
+ 80018ea:	4a0f      	ldr	r2, [pc, #60]	; (8001928 <main+0x300>)
  80018ec:	6093      	str	r3, [r2, #8]
 		  VR_Cli.Mark.PB_OUT_PP = gpio_selftest_output_pp_1(GPIOB, List_GPIOB);
  80018ee:	4924      	ldr	r1, [pc, #144]	; (8001980 <main+0x358>)
  80018f0:	4824      	ldr	r0, [pc, #144]	; (8001984 <main+0x35c>)
  80018f2:	f7ff fd71 	bl	80013d8 <gpio_selftest_output_pp_1>
  80018f6:	4603      	mov	r3, r0
- 80018f8:	4a09      	ldr	r2, [pc, #36]	; (8001920 <main+0x2f8>)
+ 80018f8:	4a0b      	ldr	r2, [pc, #44]	; (8001928 <main+0x300>)
  80018fa:	6153      	str	r3, [r2, #20]
 		  VR_Cli.Mark.PC_OUT_PP = gpio_selftest_output_pp_1(GPIOC, List_GPIOC);
  80018fc:	4922      	ldr	r1, [pc, #136]	; (8001988 <main+0x360>)
  80018fe:	4823      	ldr	r0, [pc, #140]	; (800198c <main+0x364>)
  8001900:	f7ff fd6a 	bl	80013d8 <gpio_selftest_output_pp_1>
  8001904:	4603      	mov	r3, r0
- 8001906:	4a06      	ldr	r2, [pc, #24]	; (8001920 <main+0x2f8>)
+ 8001906:	4a08      	ldr	r2, [pc, #32]	; (8001928 <main+0x300>)
  8001908:	6213      	str	r3, [r2, #32]
  800190a:	e041      	b.n	8001990 <main+0x368>
  800190c:	08008d80 	.word	0x08008d80
  8001910:	20000458 	.word	0x20000458
- 8001914:	06010523 	.word	0x06010523
+ 8001914:	07010523 	.word	0x07010523
  8001918:	08008d10 	.word	0x08008d10
  800191c:	200005f4 	.word	0x200005f4
- 8001920:	20000584 	.word	0x20000584
- 8001924:	200005e8 	.word	0x200005e8
- 8001928:	2000049c 	.word	0x2000049c
+ 8001920:	200005e8 	.word	0x200005e8
+ 8001924:	2000049c 	.word	0x2000049c
+ 8001928:	20000584 	.word	0x20000584
  800192c:	20000560 	.word	0x20000560
  8001930:	40020000 	.word	0x40020000
  8001934:	20000554 	.word	0x20000554
@@ -2995,7 +2993,7 @@ int main(void)
  8001a64:	4b33      	ldr	r3, [pc, #204]	; (8001b34 <main+0x50c>)
  8001a66:	f893 304c 	ldrb.w	r3, [r3, #76]	; 0x4c
  8001a6a:	2b04      	cmp	r3, #4
- 8001a6c:	f47f ae1b 	bne.w	80016a6 <main+0x7e>
+ 8001a6c:	f47f ae20 	bne.w	80016b0 <main+0x88>
 
 		  Tx_UART_Verita_Packet_u32(&huart6, VR_PA_PUPDR, VR_Cli.Mark.PA_PUPDR);
  8001a70:	4b30      	ldr	r3, [pc, #192]	; (8001b34 <main+0x50c>)
@@ -3097,8 +3095,8 @@ int main(void)
  8001b22:	4b04      	ldr	r3, [pc, #16]	; (8001b34 <main+0x50c>)
  8001b24:	2200      	movs	r2, #0
  8001b26:	f883 204c 	strb.w	r2, [r3, #76]	; 0x4c
-	  HAL_UART_Receive_DMA(&huart6, &RxBufferMtCl[0], 9);
- 8001b2a:	e5bc      	b.n	80016a6 <main+0x7e>
+	  if(HAL_GetTick() >= timestamp_one){
+ 8001b2a:	e5c1      	b.n	80016b0 <main+0x88>
  8001b2c:	20000000 	.word	0x20000000
  8001b30:	40020000 	.word	0x40020000
  8001b34:	20000584 	.word	0x20000584
@@ -4742,13 +4740,13 @@ void HAL_UART_MspInit(UART_HandleTypeDef* huart)
   }
 
 }
- 8002572:	e060      	b.n	8002636 <HAL_UART_MspInit+0x13e>
+ 8002572:	e061      	b.n	8002638 <HAL_UART_MspInit+0x140>
   else if(huart->Instance==USART6)
  8002574:	687b      	ldr	r3, [r7, #4]
  8002576:	681b      	ldr	r3, [r3, #0]
  8002578:	4a34      	ldr	r2, [pc, #208]	; (800264c <HAL_UART_MspInit+0x154>)
  800257a:	4293      	cmp	r3, r2
- 800257c:	d15b      	bne.n	8002636 <HAL_UART_MspInit+0x13e>
+ 800257c:	d15c      	bne.n	8002638 <HAL_UART_MspInit+0x140>
     __HAL_RCC_USART6_CLK_ENABLE();
  800257e:	2300      	movs	r3, #0
  8002580:	613b      	str	r3, [r7, #16]
@@ -4823,39 +4821,38 @@ void HAL_UART_MspInit(UART_HandleTypeDef* huart)
  8002600:	4b13      	ldr	r3, [pc, #76]	; (8002650 <HAL_UART_MspInit+0x158>)
  8002602:	2200      	movs	r2, #0
  8002604:	619a      	str	r2, [r3, #24]
-    hdma_usart6_rx.Init.Mode = DMA_NORMAL;
+    hdma_usart6_rx.Init.Mode = DMA_CIRCULAR;
  8002606:	4b12      	ldr	r3, [pc, #72]	; (8002650 <HAL_UART_MspInit+0x158>)
- 8002608:	2200      	movs	r2, #0
- 800260a:	61da      	str	r2, [r3, #28]
+ 8002608:	f44f 7280 	mov.w	r2, #256	; 0x100
+ 800260c:	61da      	str	r2, [r3, #28]
     hdma_usart6_rx.Init.Priority = DMA_PRIORITY_HIGH;
- 800260c:	4b10      	ldr	r3, [pc, #64]	; (8002650 <HAL_UART_MspInit+0x158>)
- 800260e:	f44f 3200 	mov.w	r2, #131072	; 0x20000
- 8002612:	621a      	str	r2, [r3, #32]
+ 800260e:	4b10      	ldr	r3, [pc, #64]	; (8002650 <HAL_UART_MspInit+0x158>)
+ 8002610:	f44f 3200 	mov.w	r2, #131072	; 0x20000
+ 8002614:	621a      	str	r2, [r3, #32]
     hdma_usart6_rx.Init.FIFOMode = DMA_FIFOMODE_DISABLE;
- 8002614:	4b0e      	ldr	r3, [pc, #56]	; (8002650 <HAL_UART_MspInit+0x158>)
- 8002616:	2200      	movs	r2, #0
- 8002618:	625a      	str	r2, [r3, #36]	; 0x24
+ 8002616:	4b0e      	ldr	r3, [pc, #56]	; (8002650 <HAL_UART_MspInit+0x158>)
+ 8002618:	2200      	movs	r2, #0
+ 800261a:	625a      	str	r2, [r3, #36]	; 0x24
     if (HAL_DMA_Init(&hdma_usart6_rx) != HAL_OK)
- 800261a:	480d      	ldr	r0, [pc, #52]	; (8002650 <HAL_UART_MspInit+0x158>)
- 800261c:	f000 fef4 	bl	8003408 <HAL_DMA_Init>
- 8002620:	4603      	mov	r3, r0
- 8002622:	2b00      	cmp	r3, #0
- 8002624:	d001      	beq.n	800262a <HAL_UART_MspInit+0x132>
+ 800261c:	480c      	ldr	r0, [pc, #48]	; (8002650 <HAL_UART_MspInit+0x158>)
+ 800261e:	f000 fef3 	bl	8003408 <HAL_DMA_Init>
+ 8002622:	4603      	mov	r3, r0
+ 8002624:	2b00      	cmp	r3, #0
+ 8002626:	d001      	beq.n	800262c <HAL_UART_MspInit+0x134>
       Error_Handler();
- 8002626:	f7ff febb 	bl	80023a0 <Error_Handler>
+ 8002628:	f7ff feba 	bl	80023a0 <Error_Handler>
     __HAL_LINKDMA(huart,hdmarx,hdma_usart6_rx);
- 800262a:	687b      	ldr	r3, [r7, #4]
- 800262c:	4a08      	ldr	r2, [pc, #32]	; (8002650 <HAL_UART_MspInit+0x158>)
- 800262e:	639a      	str	r2, [r3, #56]	; 0x38
- 8002630:	4a07      	ldr	r2, [pc, #28]	; (8002650 <HAL_UART_MspInit+0x158>)
- 8002632:	687b      	ldr	r3, [r7, #4]
- 8002634:	6393      	str	r3, [r2, #56]	; 0x38
+ 800262c:	687b      	ldr	r3, [r7, #4]
+ 800262e:	4a08      	ldr	r2, [pc, #32]	; (8002650 <HAL_UART_MspInit+0x158>)
+ 8002630:	639a      	str	r2, [r3, #56]	; 0x38
+ 8002632:	4a07      	ldr	r2, [pc, #28]	; (8002650 <HAL_UART_MspInit+0x158>)
+ 8002634:	687b      	ldr	r3, [r7, #4]
+ 8002636:	6393      	str	r3, [r2, #56]	; 0x38
 }
- 8002636:	bf00      	nop
- 8002638:	3730      	adds	r7, #48	; 0x30
- 800263a:	46bd      	mov	sp, r7
- 800263c:	bd80      	pop	{r7, pc}
- 800263e:	bf00      	nop
+ 8002638:	bf00      	nop
+ 800263a:	3730      	adds	r7, #48	; 0x30
+ 800263c:	46bd      	mov	sp, r7
+ 800263e:	bd80      	pop	{r7, pc}
  8002640:	40004400 	.word	0x40004400
  8002644:	40023800 	.word	0x40023800
  8002648:	40020000 	.word	0x40020000
