@@ -65,7 +65,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define FW_Master_Ver 0x08110523
+#define FW_Master_Ver 0x10260523
 
 #define INA219_Wrk
 #define Current_limit_mA 600
@@ -187,6 +187,7 @@ static enum _GrandState{
 	fw_lob,
 	pre_fw_erase,
 	pre_bootloader,
+	pnd_bootloader,
 	s_bootloader,
 	pre_monitor,
 	monitor,
@@ -396,6 +397,9 @@ int main(void)
   gScr.fullflag = 0;
 
   k_flag.cnt = 0; k_flag.dn = 0; k_flag.up = 0;
+
+  //// make sure
+  HAL_GPIO_WritePin(Client_NRST_Trg_GPIO_PORT, Client_NRST_Trg_GPIO_PIN, GPIO_PIN_RESET);
 
 
   ili9341_Init();
@@ -694,7 +698,7 @@ static void MX_TIM3_Init(void)
   /* USER CODE END TIM3_Init 1 */
   htim3.Instance = TIM3;
   htim3.Init.Prescaler = 3;
-  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim3.Init.CounterMode = TIM_COUNTERMODE_DOWN;
   htim3.Init.Period = 65535;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
@@ -1033,26 +1037,6 @@ void simple_scr(){
 
 }
 
-//void Compare_pin(){
-//	uint16_t A_PUPDR_N = VRB_CL.Mark.PA_PUPDR & 0xFFFF;
-//	uint16_t A_PUPDR_P = (VRB_CL.Mark.PA_PUPDR >> 16) & 0xFFFF;
-//	uint8_t ia, ib;
-//
-//
-//	// A
-//	for(register int i = 0;i < sizeof(List_GPIOA);i++){
-//		ia = (A_PUPDR_N >> List_GPIOA[i]) & 0x01;
-//		ib = (A_PUPDR_P >> List_GPIOA[i]) & 0x01;
-//		 if(ia == ib){
-//			 // record ?
-//			 char aadd[4] = " PA";
-//			 char aade = + List_GPIOA[i] + '0';
-//			 strncat(aadd, &aade, 2);
-//			 strncat(WR_A_PUPDR, aadd, 4);
-//		 }
-//	}
-//}
-
 
 void Button_machine(){
 
@@ -1304,7 +1288,7 @@ void GrandState_Verita(){
 		sprintf(TextDispBuffer,"Full-Script");
 		ili9341_WriteStringNoBG(60, 60, TextDispBuffer, Font16, cl_CYAN);
 
-		sprintf(TextDispBuffer,"PWR_Monitor");
+		sprintf(TextDispBuffer,"Monitor-mode");
 		ili9341_WriteStringNoBG(60, 90, TextDispBuffer, Font16, cl_CYAN);
 
 		sprintf(TextDispBuffer,"Hardware-mode");
@@ -1424,31 +1408,42 @@ void GrandState_Verita(){
 				HAL_Delay(2200);
 			}
 
-			////
 
 			BL_UART_Start(&huart1);
 
 			sprintf(TextDispBuffer,"...");
-			ili9341_WriteStringNoBG(220, 50, TextDispBuffer, Font20, cl_CYAN);
+			ili9341_WriteStringNoBG(260, 50, TextDispBuffer, Font20, cl_CYAN);
 
 			//// Flash Memory Erase ============,
 			blrespo = BL_UART_ExtendEraseMem_SP(&huart1, Erase_MASS_CMD);
+
 			//// display
 			if(blrespo == UB_ACK){
 				sprintf(TextDispBuffer,"Mem erased");
 				ili9341_WriteStringNoBG(70, 80, TextDispBuffer, Font20, cl_YELLOW);
 			}
+			//// wait flash erasing for fullscript, about 5-6 sec
+			//if(gScr.fullflag == ff_runfull){};
+			for(int i = 0;i < 6; i++){
+				ili9341_FillRect(155, 100, 10, 10, cl_WHITE);
+				HAL_Delay(500);
+				ili9341_FillRect(155, 100, 10, 10, cl_BLACK);
+				HAL_Delay(500);
+			}
+
 
 			BL_UART_Finish();
 
 			//HAL_Delay(3500);
 			sprintf(TextDispBuffer,"Erased Finish");
 			ili9341_WriteStringNoBG(70, 110, TextDispBuffer, Font20, cl_YELLOW);
+			HAL_Delay(500);
 
 			//// -- Close Client ----
-			HAL_Delay(100);
+			//if(gScr.fullflag != ff_runfull){
 			HAL_GPIO_WritePin(RelayClient_GPIO_Port, RelayClient_Pin, GPIO_PIN_RESET);
-			////
+			//};
+
 
 			k_flag.cnt = 0;
 			if(gScr.fullflag == ff_runfull){
@@ -1581,11 +1576,11 @@ void GrandState_Verita(){
 		ili9341_WriteStringNoBG(30, 220, TextDispBuffer, Font16, cl_WHITE);
 
 
-		/*condition to jump state from HW
-		 * if currentchk ok
-		 * 		if pressed or 3 sec pass -> go bootloader
-		 * else force back lobby & turnoff relay.
-		 * */
+			/*condition to jump state from HW
+			 * if currentchk ok
+			 * 		if pressed or 3 sec pass -> go bootloader
+			 * else force back lobby & turnoff relay.
+			 * */
 
 		//// wait for MCU Booting
 		if(HAL_GetTick() >= gScr.timelog){
@@ -1607,9 +1602,6 @@ void GrandState_Verita(){
 			}
 			//// Atleast fail
 			else{
-
-				//sprintf(TextDispBuffer,"Board Bad"); ili9341_WriteString(110, 185, TextDispBuffer, Font16, cl_YELLOW, cl_BLACK);
-				//sprintf(TextDispBuffer,"MCU Bad"); ili9341_WriteString(20, 185, TextDispBuffer, Font16, cl_YELLOW, cl_BLACK);
 
 				hwscor.ptime_scores = 0;
 
@@ -1668,7 +1660,18 @@ void GrandState_Verita(){
 
 		k_flag.cnt = 0;
 		GrandState = s_bootloader;
+		//GrandState = pnd_bootloader; gScr.timelog = HAL_GetTick() + 3500;
 		break; // pre_bootloader
+
+	case pnd_bootloader:
+		//// -- Open Client make sure ----
+		HAL_GPIO_WritePin(RelayClient_GPIO_Port, RelayClient_Pin, GPIO_PIN_SET);
+
+		if(HAL_GetTick() >= gScr.timelog){
+			GrandState = s_bootloader;
+		}
+		
+		break;
 
 	case s_bootloader:
 		stboxp.choice_set = bpoxy_def;
@@ -1690,21 +1693,11 @@ void GrandState_Verita(){
 
 		BL_UART_Start(&huart1);
 
-		//// Flash Memory Erase ============,
-		//// Erase1_Mass_CMD makes bootloader not response to ALL write CMD / dont know why
-		//blrespo = BL_UART_ExtendEraseMem_SP(&huart1, Erase_Bank1_CMD);
-		//blrespo = BL_UART_ExtendEraseMem_SP(&huart1, Erase_Bank2_CMD);
-//		//blrespo = BL_UART_ExtendEraseMem_SP(&huart1, Erase_MASS_CMD);
-//
-//		//// display
-//		if(blrespo == UB_NACK){
-//			sprintf(TextDispBuffer,"Mem erased");
-//			ili9341_WriteStringNoBG(30, 160, TextDispBuffer, Font12, cl_YELLOW);
-//		}
-//		HAL_Delay(50);
-//		BL_UART_Finish(&huart1);
-
-//		BL_UART_Start(&huart1);
+			//// Flash Memory Erase ============, erased in flash erase state instead
+			//// Erase1_Mass_CMD makes bootloader not response to ALL write CMD / dont know why
+			//blrespo = BL_UART_ExtendEraseMem_SP(&huart1, Erase_Bank1_CMD);
+			//blrespo = BL_UART_ExtendEraseMem_SP(&huart1, Erase_Bank2_CMD);
+			//blrespo = BL_UART_ExtendEraseMem_SP(&huart1, Erase_MASS_CMD);
 
 
 		//// WriteMem Set  =========================================
@@ -1734,10 +1727,10 @@ void GrandState_Verita(){
 
 
 		//// Hard reset--------
-		HAL_GPIO_WritePin(RelayClient_GPIO_Port, RelayClient_Pin, GPIO_PIN_RESET);
-		HAL_Delay(50);
-		HAL_GPIO_WritePin(RelayClient_GPIO_Port, RelayClient_Pin, GPIO_PIN_SET);
-		HAL_Delay(1000);
+//		HAL_GPIO_WritePin(RelayClient_GPIO_Port, RelayClient_Pin, GPIO_PIN_RESET);
+//		HAL_Delay(50);
+//		HAL_GPIO_WritePin(RelayClient_GPIO_Port, RelayClient_Pin, GPIO_PIN_SET);
+//		HAL_Delay(1000);
 		//// Hard reset--------
 
 
@@ -1749,7 +1742,7 @@ void GrandState_Verita(){
 		sprintf(TextDispBuffer,"Start");
 		ili9341_WriteStringNoBG(140, 190, TextDispBuffer, Font24, cl_GREEN);
 		////wait for user to realise finish
-		HAL_Delay(1200);
+		HAL_Delay(1000);
 
 		//// disable UART, disable after endboot, prevent misunderstanding when GPIO test
 		//gpio_BL_UART_Deactivate();
@@ -1757,6 +1750,7 @@ void GrandState_Verita(){
 		k_flag.cnt = 0;//// prevent over state jump
 		if(gScr.fullflag == ff_runfull){
 			GrandState = pre_gpio_chk;
+			//// wait for gpio_chk before tomeout ////
 			gScr.timelog = HAL_GetTick() + 3500;
 		}else{
 			GrandState = pre_fw_lob;
@@ -1843,20 +1837,16 @@ void GrandState_Verita(){
 					VRB_CL.Mark.Flag_next = 0;
 					GrandState = gpio_chk;
 				}
-//				else if(HAL_GetTick() >= gScr.timelog){ //timeout connection
-//
-//					sprintf(TextDispBuffer,"Connection Timeout");
-//					ili9341_WriteStringNoBG(60, 50, TextDispBuffer, Font20, cl_WHITE);
-//					VRB_CL.Mark.Flag_ger = 0;
-//					VRB_CL.Mark.Flag_next = 0;
-//					GrandState = gpio_chk;
-//				}else{}
-				//// temporary dummy
 
 				//// Buzzer scream
 				buzzr.flag = 3;
 				buzzr.priod_up = 300;
 				buzzer_scream_cnt();
+
+				////soft reset
+				HAL_GPIO_WritePin(client_NRST_GPIO_Port, client_NRST_Pin, GPIO_PIN_SET);
+				HAL_Delay(300);
+				HAL_GPIO_WritePin(client_NRST_GPIO_Port, client_NRST_Pin, GPIO_PIN_RESET);
 
 				GrandState = gpio_chk;
 			}
@@ -2082,13 +2072,17 @@ void GrandState_Verita(){
 		ili9341_WriteStringNoBG(20, 100, TextDispBuffer, Font16, cl_WHITE);
 
 		sprintf(TextDispBuffer,"https://");
-		ili9341_WriteStringNoBG(20, 130, TextDispBuffer, Font16, cl_CYAN);
-
+		ili9341_WriteStringNoBG(20, 125, TextDispBuffer, Font16, cl_CYAN);
 		sprintf(TextDispBuffer,"kmutt.me/owlsoffice.verita");
-		ili9341_WriteStringNoBG(20, 145, TextDispBuffer, Font16, cl_CYAN);
+		ili9341_WriteStringNoBG(20, 140, TextDispBuffer, Font16, cl_CYAN);
+		//owlhor/Verita_NucleoF411RETester
+		sprintf(TextDispBuffer,"github.com/owlhor/");
+		ili9341_WriteStringNoBG(20, 165, TextDispBuffer, Font16, cl_CYAN);
+		sprintf(TextDispBuffer,"Verita_NucleoF411RETester");
+		ili9341_WriteStringNoBG(20, 180, TextDispBuffer, Font16, cl_CYAN);
 
 		sprintf(TextDispBuffer,"Program Version: %08X", FW_Master_Ver);
-		ili9341_WriteStringNoBG(20, 185, TextDispBuffer, Font16, cl_NAVY);
+		ili9341_WriteStringNoBG(135, 215, TextDispBuffer, Font12, cl_NAVY);
 
 		GrandState = about;
 		break; ////pre_about
@@ -2110,11 +2104,6 @@ void GrandState_Verita(){
 
 			sprintf(TextDispBuffer,"Authors");
 			ili9341_WriteStringNoBG(100, 5, TextDispBuffer, Font20, cl_BLACK);
-
-//			sprintf(TextDispBuffer,"#include");
-//			ili9341_WriteStringNoBG(10, 35, TextDispBuffer, Font12, cl_CYAN);
-//			sprintf(TextDispBuffer,"#include");
-//			ili9341_WriteStringNoBG(10, 52, TextDispBuffer, Font12, cl_CYAN);
 
 			sprintf(TextDispBuffer,"Wipop Panyatipsakul");
 			ili9341_WriteStringNoBG(25, 35, TextDispBuffer, Font16, cl_WHITE);
