@@ -219,6 +219,7 @@ char WR_A_OOD[30]   = "A_OOD: ";
 char WR_B_OOD[30]   = "B_OOD: ";
 char WR_C_OOD[30]   = "C_OOD: ";
 
+uint8_t cnt_allpass = 0;
 uint32_t UA_BL_Break; //// buffer for write GPIOA->AFR
 
 //// ------------------------ Display buffer -----------------------------
@@ -257,9 +258,9 @@ const bposxyType bposxy_def = {
 };
 
 const bposxyType bposxy_lobby = {
-		7,
-		{322, 30, 30,  30,  30,  30,  20},
-		{242, 60, 90, 120, 150, 180, 220}
+		6,
+		{322, 30, 30,  30,  30,  30},
+		{242, 60, 90, 120, 150, 180}
 };
 
 const bposxyType bposxy_lobfw = {
@@ -323,6 +324,7 @@ void knob_rotter();
 void Protection_machine();
 void manual_relay();
 void Compare_pin_32(uint32_t raw32, uint16_t *Lista_GPIOx, uint8_t gpst,char *outchar);
+void CheckAllPass();
 
 void gpio_BL_UART_activate();
 void gpio_BL_UART_Deactivate();
@@ -1062,8 +1064,18 @@ void Button_machine(){
 				flag_manual_relay = 1;
 			}
 			if(btn_read[2] == 0b1000){ // SW2
-				GrandState = pre_lobby;
+				if(GrandState != s_bootloader){
+					GrandState = pre_lobby;
+				}
+
 			}
+			if(btn_read[2] == 0b0100){ // SW3
+				k_flag.cnt++;
+			}
+//			if(btn_read[2] == 0b0100){ // SW4
+//				//// work for SW4 here
+//			}
+
 		}
 
 		//// knob rotter overflow_resist
@@ -1206,6 +1218,25 @@ void Compare_pin_32(uint32_t raw32, uint16_t *Lista_GPIOx, uint8_t gpst,char *ou
 		sprintf(aadd, "_PASS");
 		strncat(outchar, aadd, 7);
 	}
+}
+
+void CheckAllPass(){
+	cnt_allpass = 0; // init reset
+
+	//// lazy Cat cat chekallpass
+	////  \r,\n count as 1
+	if(WR_A_PUPDR[9] == 95){cnt_allpass++;} //// 95 = "_"
+	if(WR_B_PUPDR[9] == 95){cnt_allpass++;}
+	if(strlen(WR_C_PUPDR) <= 17 && WR_C_PUPDR[10] == 67){cnt_allpass++;}// PC_13
+
+	if(WR_A_OPP[9] == 95){cnt_allpass++;}
+	if(WR_B_OPP[9] == 95){cnt_allpass++;}
+	if(WR_C_OPP[9] == 95){cnt_allpass++;}
+
+	if(WR_A_OOD[9] == 95){cnt_allpass++;}
+	if(WR_B_OOD[9] == 95){cnt_allpass++;}
+	if(WR_C_OOD[9] == 95){cnt_allpass++;}
+
 }
 
 void buzzer_scream_cnt(){
@@ -1505,7 +1536,7 @@ void GrandState_Verita(){
 
 		//// 5V
 		sprintf(TextDispBuffer,"%4d", (uint16_t)(mcp_read.cv[1]*1000)); // inatb.inatb.Bus_V
-		if(mcp_read.cv[1] <= 4.500){
+		if(mcp_read.cv[1] <= 4.300){
 			ili9341_WriteString(100, 50, TextDispBuffer, Font20, cl_RED, cl_BLACK);
 			sprintf(TextDispBuffer,"FAIL"); ili9341_WriteString(220, 50, TextDispBuffer, Font20, cl_RED, cl_BLACK);
 			hwscor.p5V = 0;
@@ -1815,6 +1846,14 @@ void GrandState_Verita(){
 					Compare_pin_32(VRB_CL.Mark.PC_OUT_PP, List_GPIOC, 2, WR_C_OPP);
 					Compare_pin_32(VRB_CL.Mark.PC_OUT_OD, List_GPIOC, 2, WR_C_OOD);
 
+					HAL_Delay(5);
+
+					if(cnt_allpass >= 9){
+						  //// there're 9 pass
+						  sprintf(TextDispBuffer, "ALL PASS");
+						  ili9341_WriteStringNoBG(200, 100, TextDispBuffer, Font20, cl_GREEN);
+					 }else{}
+
 					 sprintf(TextDispBuffer, WR_A_PUPDR); ili9341_WriteStringNoBG(10, 35, TextDispBuffer, Font16, cl_WHITE);
 
 					 sprintf(TextDispBuffer, WR_A_OPP); ili9341_WriteStringNoBG(10, 55, TextDispBuffer, Font16, cl_WHITE);
@@ -1879,12 +1918,17 @@ void GrandState_Verita(){
 			ili9341_WriteStringNoBG(250, 225, TextDispBuffer, Font12, cl_WHITE);
 
 
-			if(k_flag.cnt && stboxp.ch_is == 1){ //// Back to lobby
+			if(k_flag.cnt){ //// Back to lobby  // && stboxp.ch_is == 1
 				GrandState = pre_lobby;
 				k_flag.cnt = 0;
 				VRB_CL.Mark.FirmwareVer = 0x00; // clear if nextstep break
 				VRB_CL.Mark.cputemp = 0; //// reset temp, prevent old data show
 				resetgpio_char();
+
+				//// Reset Verita PTC Buffer counter
+				// n/a n/a
+				////
+
 				gScr.fullflag = 0;
 				HAL_GPIO_WritePin(RelayClient_GPIO_Port, RelayClient_Pin, GPIO_PIN_RESET);
 				}
