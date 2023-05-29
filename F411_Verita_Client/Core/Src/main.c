@@ -49,7 +49,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define FIRMWARE_VER 0x07010523 // 01 00 03 23  -- ver day month year 32-bit
+#define FIRMWARE_VER 0x10290523 // 01 00 03 23  -- ver day month year 32-bit
 //#define TIMx_PWM_En
 //#define GPIO_SELFTEST_SC
 /* USER CODE END PD */
@@ -81,6 +81,7 @@ float cputempCC = 0;
 
 uint8_t bluecounter = 0;
 uint8_t counter_flagger = 0; // countif testscript is runned
+uint8_t cnt_allpass = 0;
 uint32_t timestamp_one = 0;
 uint32_t timestamp_selftestdelay = 0;
 
@@ -143,6 +144,7 @@ void GPIO_Selftest_step_1_single();
 void Compare_pin();
 void Compare_pin_32(uint32_t raw32, uint16_t *Lista_GPIOx, uint8_t gpst, char *outchar);
 void resetgpio_char();
+void CheckAllPass();
 //void Tx_UART_Verita_Packet_u8(UART_HandleTypeDef *huart, uint8_t regis,uint8_t *pdata, uint8_t size);
 //void Tx_UART_Verita_Packet_u32(UART_HandleTypeDef *huart, uint8_t regis,uint32_t pdata);
 /* USER CODE END PFP */
@@ -246,6 +248,14 @@ int main(void)
 
 		  //// Print GPIO Test Result
 		  if(counter_flagger){
+			  if(cnt_allpass >= 9){
+				  //// there're 9 pass
+				  sprintf(uartTXBf, "\r\n+++ ALL PASS +++\r\n"); HAL_UART_Transmit(&huart2, (uint8_t*)uartTXBf, strlen(uartTXBf),10);
+			  }else{
+				  sprintf(uartTXBf, "\r\n--- incomplete ---\r\n"); HAL_UART_Transmit(&huart2, (uint8_t*)uartTXBf, strlen(uartTXBf),10);
+			  }
+
+
 			  sprintf(uartTXBf, WR_A_PUPDR); HAL_UART_Transmit(&huart2, (uint8_t*)uartTXBf, strlen(uartTXBf),10);
 
 			  sprintf(uartTXBf, WR_A_OPP); HAL_UART_Transmit(&huart2, (uint8_t*)uartTXBf, strlen(uartTXBf),10);
@@ -288,8 +298,8 @@ int main(void)
 //		  Tx_UART_Verita_Packet_u32(&huart6, 0x13, 0x12); //// data request
 		  //// ------- old script ------------------
 
-
 		  //VR_Cli.Mark.Flag_ger = 0x02;
+		  //// delay wait for button release
 		  if (HAL_GetTick() >= timestamp_selftestdelay){
 			  VR_Cli.Mark.Flag_ger = VRF_GPIO_Runalltest;
 			  flag_gpioselftest = 0;
@@ -297,7 +307,7 @@ int main(void)
 
 	  }
 
-	  //// Flag test
+	  //// Flag run all test
 	  if(VR_Cli.Mark.Flag_ger == VRF_GPIO_Runalltest){
 		  counter_flagger++;
 
@@ -340,6 +350,10 @@ int main(void)
 		  Compare_pin_32(VR_Cli.Mark.PC_PUPDR, List_GPIOC, 2, WR_C_PUPDR);
 		  Compare_pin_32(VR_Cli.Mark.PC_OUT_PP, List_GPIOC, 2, WR_C_OPP);
 		  Compare_pin_32(VR_Cli.Mark.PC_OUT_OD, List_GPIOC, 2, WR_C_OOD);
+
+		  HAL_Delay(10);
+
+		  CheckAllPass();
 
 //		  uint32_t bbb = 0x12123333;
 //		  for(register int i = 1;i < 9;i++){
@@ -703,28 +717,6 @@ float TempEquat(float Vs){
 	return ((Vs - 0.76)/(0.0025)) + 25.0; //2.5*0.001
 }
 
-//void Compare_pin(){
-//	uint16_t A_PUPDR_N = VR_Cli.Mark.PA_PUPDR & 0xFFFF;
-//	uint16_t A_PUPDR_P = (VR_Cli.Mark.PA_PUPDR >> 16) & 0xFFFF;
-//	uint8_t iaa, iab;
-//	char aadd[4];
-//
-//	//// A
-//	for(register int i = 0;i < sizeof(List_GPIOA);i++){
-//		if(List_GPIOA[i] >= 20){break;}
-//
-//		iaa = (A_PUPDR_N >> List_GPIOA[i]) & 0x01;
-//		iab = (A_PUPDR_P >> List_GPIOA[i]) & 0x01;
-//		 if(iaa == iab){
-//			 //
-//			 sprintf(aadd, "PA%d", (uint8_t)List_GPIOA[i]); //
-//			 strncat(WR_A_PUPDR, aadd, 4);
-//			 sprintf(aadd, " ");
-//			 strncat(WR_A_PUPDR, aadd, 1);
-//		 }
-//
-//	}
-//}
 
 void Compare_pin_32(uint32_t raw32, uint16_t *Lista_GPIOx, uint8_t gpst,char *outchar){
 	/*  @brief compare uint32_t data given from gpio_testscript then compared to find the same pair
@@ -803,6 +795,25 @@ void resetgpio_char(){
 	sprintf(WR_C_OOD, "\r\nC_OOD: ");
 }
 
+
+void CheckAllPass(){
+	cnt_allpass = 0; // init reset
+
+	//// lazy Cat cat chekallpass
+	////  \r,\n count as 1
+	if(WR_A_PUPDR[9] == 95){cnt_allpass++;} //// 95 = "_"
+	if(WR_B_PUPDR[9] == 95){cnt_allpass++;}
+	if(strlen(WR_C_PUPDR) <= 17 && WR_C_PUPDR[10] == 67){cnt_allpass++;}// PC_13
+
+	if(WR_A_OPP[9] == 95){cnt_allpass++;}
+	if(WR_B_OPP[9] == 95){cnt_allpass++;}
+	if(WR_C_OPP[9] == 95){cnt_allpass++;}
+
+	if(WR_A_OOD[9] == 95){cnt_allpass++;}
+	if(WR_B_OOD[9] == 95){cnt_allpass++;}
+	if(WR_C_OOD[9] == 95){cnt_allpass++;}
+
+}
 //void GPIO_Selftest_step_1_single(){
 //	/* 1 - Input pullup read
 //	 * 2 - Input pulldown read
