@@ -264,9 +264,9 @@ const bposxyType bposxy_lobby = {
 };
 
 const bposxyType bposxy_lobfw = {
-		4,
-		{322, 20, 20,  10},
-		{242, 60, 100, 220}
+		5,
+		{322, 20,  20,  20,  10},
+		{242, 60, 100, 140, 220}
 };
 
 bposxyType bposxy[4] = {
@@ -1225,17 +1225,17 @@ void CheckAllPass(){
 
 	//// lazy Cat cat chekallpass
 	////  \r,\n count as 1
-	if(WR_A_PUPDR[9] == 95){cnt_allpass++;} //// 95 = "_"
-	if(WR_B_PUPDR[9] == 95){cnt_allpass++;}
-	if(strlen(WR_C_PUPDR) <= 17 && WR_C_PUPDR[10] == 67){cnt_allpass++;}// PC_13
+	if(WR_A_PUPDR[7] == 95){cnt_allpass++;} //// 95 = "_"
+	if(WR_B_PUPDR[7] == 95){cnt_allpass++;}
+	if(strlen(WR_C_PUPDR) <= 15 && WR_C_PUPDR[8] == 67){cnt_allpass++;}// PC_13
 
-	if(WR_A_OPP[9] == 95){cnt_allpass++;}
-	if(WR_B_OPP[9] == 95){cnt_allpass++;}
-	if(WR_C_OPP[9] == 95){cnt_allpass++;}
+	if(WR_A_OPP[7] == 95){cnt_allpass++;}
+	if(WR_B_OPP[7] == 95){cnt_allpass++;}
+	if(WR_C_OPP[7] == 95){cnt_allpass++;}
 
-	if(WR_A_OOD[9] == 95){cnt_allpass++;}
-	if(WR_B_OOD[9] == 95){cnt_allpass++;}
-	if(WR_C_OOD[9] == 95){cnt_allpass++;}
+	if(WR_A_OOD[7] == 95){cnt_allpass++;}
+	if(WR_B_OOD[7] == 95){cnt_allpass++;}
+	if(WR_C_OOD[7] == 95){cnt_allpass++;}
 
 }
 
@@ -1392,6 +1392,12 @@ void GrandState_Verita(){
 		sprintf(TextDispBuffer,"Erase Flash");
 		ili9341_WriteStringNoBG(50, 100, TextDispBuffer, Font16, cl_CYAN);
 
+		sprintf(TextDispBuffer,"GPIO-check");
+		ili9341_WriteStringNoBG(50, 140, TextDispBuffer, Font16, cl_CYAN);
+
+		sprintf(TextDispBuffer,"(Client firmware uploaded first)");
+		ili9341_WriteStringNoBG(65, 160, TextDispBuffer, Font12, cl_WHITE);
+
 		sprintf(TextDispBuffer,"<-Back");
 		ili9341_WriteStringNoBG(30, 220, TextDispBuffer, Font16, cl_WHITE);
 
@@ -1406,7 +1412,12 @@ void GrandState_Verita(){
 
 			if(stboxp.ch_is == 1){GrandState = pre_bootloader;}
 			if(stboxp.ch_is == 2){GrandState = pre_fw_erase;}
-			if(stboxp.ch_is == 3){GrandState = pre_lobby;}
+			if(stboxp.ch_is == 3){
+				GrandState = pre_gpio_chk;
+				HAL_GPIO_WritePin(RelayClient_GPIO_Port, RelayClient_Pin, GPIO_PIN_SET);
+				gScr.timelog = HAL_GetTick() + 4500;
+			}
+			if(stboxp.ch_is == 4){GrandState = pre_lobby;}
 
 		k_flag.cnt = 0;
 		}
@@ -1848,10 +1859,14 @@ void GrandState_Verita(){
 
 					HAL_Delay(5);
 
+					CheckAllPass();
 					if(cnt_allpass >= 9){
 						  //// there're 9 pass
-						  sprintf(TextDispBuffer, "ALL PASS");
-						  ili9341_WriteStringNoBG(200, 100, TextDispBuffer, Font20, cl_GREEN);
+						  sprintf(TextDispBuffer, "ALL");
+						  ili9341_WriteStringNoBG(205, 80, TextDispBuffer, Font20, cl_GREEN);
+
+						  sprintf(TextDispBuffer, "PASS");
+						  ili9341_WriteStringNoBG(200, 110, TextDispBuffer, Font20, cl_GREEN);
 					 }else{}
 
 					 sprintf(TextDispBuffer, WR_A_PUPDR); ili9341_WriteStringNoBG(10, 35, TextDispBuffer, Font16, cl_WHITE);
@@ -1919,7 +1934,12 @@ void GrandState_Verita(){
 
 
 			if(k_flag.cnt){ //// Back to lobby  // && stboxp.ch_is == 1
-				GrandState = pre_lobby;
+				if(gScr.fullflag != ff_runfull){
+					GrandState = pre_fw_lob;
+				}else{
+					GrandState = pre_lobby;
+				}
+
 				k_flag.cnt = 0;
 				VRB_CL.Mark.FirmwareVer = 0x00; // clear if nextstep break
 				VRB_CL.Mark.cputemp = 0; //// reset temp, prevent old data show

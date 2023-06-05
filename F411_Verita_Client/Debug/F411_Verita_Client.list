@@ -2626,7 +2626,7 @@ int main(void)
  800178e:	e02f      	b.n	80017f0 <main+0x1c8>
  8001790:	08008ed8 	.word	0x08008ed8
  8001794:	20000458 	.word	0x20000458
- 8001798:	10290523 	.word	0x10290523
+ 8001798:	11310523 	.word	0x11310523
  800179c:	08008e38 	.word	0x08008e38
  80017a0:	200005f4 	.word	0x200005f4
  80017a4:	200005e8 	.word	0x200005e8
@@ -2642,7 +2642,7 @@ int main(void)
  80017cc:	2000055e 	.word	0x2000055e
  80017d0:	08008ea8 	.word	0x08008ea8
 			  }else{
-				  sprintf(uartTXBf, "\r\n--- incomplete ---\r\n"); HAL_UART_Transmit(&huart2, (uint8_t*)uartTXBf, strlen(uartTXBf),10);
+				  sprintf(uartTXBf, "\r\n--- unhealthy ---\r\n"); HAL_UART_Transmit(&huart2, (uint8_t*)uartTXBf, strlen(uartTXBf),10);
  80017d4:	49aa      	ldr	r1, [pc, #680]	; (8001a80 <main+0x458>)
  80017d6:	48ab      	ldr	r0, [pc, #684]	; (8001a84 <main+0x45c>)
  80017d8:	f005 f898 	bl	800690c <siprintf>
@@ -4378,11 +4378,11 @@ void CheckAllPass(){
  800237c:	b2da      	uxtb	r2, r3
  800237e:	4b28      	ldr	r3, [pc, #160]	; (8002420 <CheckAllPass+0xd0>)
  8002380:	701a      	strb	r2, [r3, #0]
-	if(strlen(WR_C_PUPDR) <= 17 && WR_C_PUPDR[10] == 67){cnt_allpass++;}// PC_13
+	if(strlen(WR_C_PUPDR) <= 16 && WR_C_PUPDR[10] == 67){cnt_allpass++;}// PC_13
  8002382:	482a      	ldr	r0, [pc, #168]	; (800242c <CheckAllPass+0xdc>)
  8002384:	f7fd ff2c 	bl	80001e0 <strlen>
  8002388:	4603      	mov	r3, r0
- 800238a:	2b11      	cmp	r3, #17
+ 800238a:	2b10      	cmp	r3, #16
  800238c:	d809      	bhi.n	80023a2 <CheckAllPass+0x52>
  800238e:	4b27      	ldr	r3, [pc, #156]	; (800242c <CheckAllPass+0xdc>)
  8002390:	7a9b      	ldrb	r3, [r3, #10]

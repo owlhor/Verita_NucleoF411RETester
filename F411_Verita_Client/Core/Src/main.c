@@ -49,7 +49,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define FIRMWARE_VER 0x10290523 // 01 00 03 23  -- ver day month year 32-bit
+#define FIRMWARE_VER 0x12050623 // 01 00 03 23  -- ver day month year 32-bit
 //#define TIMx_PWM_En
 //#define GPIO_SELFTEST_SC
 /* USER CODE END PD */
@@ -252,7 +252,7 @@ int main(void)
 				  //// there're 9 pass
 				  sprintf(uartTXBf, "\r\n+++ ALL PASS +++\r\n"); HAL_UART_Transmit(&huart2, (uint8_t*)uartTXBf, strlen(uartTXBf),10);
 			  }else{
-				  sprintf(uartTXBf, "\r\n--- incomplete ---\r\n"); HAL_UART_Transmit(&huart2, (uint8_t*)uartTXBf, strlen(uartTXBf),10);
+				  sprintf(uartTXBf, "\r\n--- unhealthy ---\r\n"); HAL_UART_Transmit(&huart2, (uint8_t*)uartTXBf, strlen(uartTXBf),10);
 			  }
 
 
@@ -803,7 +803,7 @@ void CheckAllPass(){
 	////  \r,\n count as 1
 	if(WR_A_PUPDR[9] == 95){cnt_allpass++;} //// 95 = "_"
 	if(WR_B_PUPDR[9] == 95){cnt_allpass++;}
-	if(strlen(WR_C_PUPDR) <= 17 && WR_C_PUPDR[10] == 67){cnt_allpass++;}// PC_13
+	if(strlen(WR_C_PUPDR) <= 16 && WR_C_PUPDR[10] == 67){cnt_allpass++;}// PC_13
 
 	if(WR_A_OPP[9] == 95){cnt_allpass++;}
 	if(WR_B_OPP[9] == 95){cnt_allpass++;}
