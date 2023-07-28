@@ -49,7 +49,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define FIRMWARE_VER 0x12050623 // 01 00 03 23  -- ver day month year 32-bit
+#define FIRMWARE_VER 0x13072823 // 01 00 03 23  -- ver day month year 32-bit
 //#define TIMx_PWM_En
 //#define GPIO_SELFTEST_SC
 /* USER CODE END PD */
@@ -238,10 +238,10 @@ int main(void)
 
 		  cputempCC = TempEquat(ADCTVolta(cputmpraw));
 
-		  sprintf(uartTXBf, "\r\n - - - - - - - - - - - - - - - - - - - - - - - - -\r\n");
+		  sprintf(uartTXBf, "\r\n - - - - - - - - VERITA - - - F411RE - - - - - - - - - - - -\r\n");
 		  HAL_UART_Transmit(&huart2, (uint8_t*)uartTXBf, strlen(uartTXBf),10);
 
-		  sprintf(uartTXBf, "cputempraw = %d => %.3f C\r\n ",
+		  sprintf(uartTXBf, "cputempraw : %d => %.3f C\r\n ",
 				  cputmpraw,
 				  cputempCC);
 		  HAL_UART_Transmit(&huart2, (uint8_t*)uartTXBf, strlen(uartTXBf),10);
@@ -250,9 +250,9 @@ int main(void)
 		  if(counter_flagger){
 			  if(cnt_allpass >= 9){
 				  //// there're 9 pass
-				  sprintf(uartTXBf, "\r\n+++ ALL PASS +++\r\n"); HAL_UART_Transmit(&huart2, (uint8_t*)uartTXBf, strlen(uartTXBf),10);
+				  sprintf(uartTXBf, "\r\n+++ GPIO ALL PASS +++\r\n"); HAL_UART_Transmit(&huart2, (uint8_t*)uartTXBf, strlen(uartTXBf),10);
 			  }else{
-				  sprintf(uartTXBf, "\r\n--- unhealthy ---\r\n"); HAL_UART_Transmit(&huart2, (uint8_t*)uartTXBf, strlen(uartTXBf),10);
+				  sprintf(uartTXBf, "\r\n--- GPIO unhealthy ---\r\n"); HAL_UART_Transmit(&huart2, (uint8_t*)uartTXBf, strlen(uartTXBf),10);
 			  }
 
 
