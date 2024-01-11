@@ -7,7 +7,7 @@ main.c:528:13:MX_GPIO_Init	1
 main.c:590:7:ADCTVoltar	1
 main.c:600:7:Tempequat_G4	1
 main.c:612:6:Compare_pin_32	9
-main.c:674:6:resetgpio_char	1
-main.c:690:6:CheckAllPass	11
-main.c:711:6:HAL_GPIO_EXTI_Callback	2
-main.c:726:6:Error_Handler	1
+main.c:675:6:resetgpio_char	1
+main.c:691:6:CheckAllPass	11
+main.c:712:6:HAL_GPIO_EXTI_Callback	2
+main.c:727:6:Error_Handler	1

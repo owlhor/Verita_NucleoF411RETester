@@ -51,9 +51,9 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define FIRMWARE_VER 0xBB280723 // 01 00 03 23  -- ver day month year 32-bit
+#define FIRMWARE_VER 0xBB261223 // 01 00 03 23  -- ver day month year 32-bit
 
-#define fakeoffset 12 // MCU Temp Celcius offset fake
+#define fakeoffset 6 // MCU Temp Celcius offset fake
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -187,7 +187,7 @@ int main(void)
   MX_LPUART1_UART_Init();
   MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
-  char temp[]="----------------- G474_Verita_Client --------------------\r\n";
+  char temp[]="\r\n----------------- G474_Verita_Client --------------------\r\n";
   HAL_UART_Transmit(&hlpuart1, (uint8_t*)temp, strlen(temp),10);
 
   sprintf(uartTXBf, "Firmware ver: %08X \r\n ", FIRMWARE_VER);
@@ -218,13 +218,13 @@ int main(void)
 
 	  		  //cputmpraw = CPUTempread();
 
-	  		  sprintf(uartTXBf, "\r\n - - - - - - - - VERITA - - - G474RE - - - - - - - - - - - -\r\n");
+	  		  sprintf(uartTXBf, "\r\n - - - - - - - - VERITA - - - G474RE - - - - - BETA - - - - - -\r\n");
 	  		  HAL_UART_Transmit(&hlpuart1, (uint8_t*)uartTXBf, strlen(uartTXBf),10);
 
 	  		  sprintf(uartTXBf, "Vrefint : %4d = %.2f V \r\n", (uint16_t)ADCRawread.u16[1], ADCTVoltar(ADCRawread.u16[1], 3.32));
 	  		  HAL_UART_Transmit(&hlpuart1, (uint8_t*)uartTXBf, strlen(uartTXBf),10);
 	  		  //// CPU temp reoprt // incomplete, odd value, formula
-	  		  sprintf(uartTXBf, "TempMCU : %4d = %.2f C , (offset + %d)  \r\n ", (uint16_t)ADCRawread.u16[0],
+	  		  sprintf(uartTXBf, "TempMCU : %4d = %.2f C , (+ %d offset)  \r\n ", (uint16_t)ADCRawread.u16[0],
 	  				Tempequat_G4(ADCRawread.u16[0], 3.3), fakeoffset);
 	  		  HAL_UART_Transmit(&hlpuart1, (uint8_t*)uartTXBf, strlen(uartTXBf),10);
 	  		  ////
@@ -608,7 +608,7 @@ float Tempequat_G4(int16_t data, float vref){
 
 	return set1 * set2 + 30 + fakeoffset; //// + 12 is fake offset
 }
-
+//// GPIO Testscript
 void Compare_pin_32(uint32_t raw32, uint16_t *Lista_GPIOx, uint8_t gpst,char *outchar){
 	/*  @brief compare uint32_t data given from gpio_testscript then compared to find the same pair
 	 * 			(According to the gpio_testscript functions, if the read value of GPIO_input during
@@ -671,6 +671,7 @@ void Compare_pin_32(uint32_t raw32, uint16_t *Lista_GPIOx, uint8_t gpst,char *ou
 	}
 }
 
+//// GPIO Testscript
 void resetgpio_char(){
 
 	sprintf(WR_A_PUPDR, "\r\nA_PUR: ");
@@ -686,7 +687,7 @@ void resetgpio_char(){
 	sprintf(WR_C_OOD, "\r\nC_OOD: ");
 }
 
-
+//// GPIO Testscript
 void CheckAllPass(){
 	cnt_allpass = 0; // init reset
 
