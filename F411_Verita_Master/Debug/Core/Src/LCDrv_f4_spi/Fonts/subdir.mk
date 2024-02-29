@@ -11,19 +11,19 @@ C_SRCS += \
 ../Core/Src/LCDrv_f4_spi/Fonts/font24.c \
 ../Core/Src/LCDrv_f4_spi/Fonts/font8.c 
 
-OBJS += \
-./Core/Src/LCDrv_f4_spi/Fonts/font12.o \
-./Core/Src/LCDrv_f4_spi/Fonts/font16.o \
-./Core/Src/LCDrv_f4_spi/Fonts/font20.o \
-./Core/Src/LCDrv_f4_spi/Fonts/font24.o \
-./Core/Src/LCDrv_f4_spi/Fonts/font8.o 
-
 C_DEPS += \
 ./Core/Src/LCDrv_f4_spi/Fonts/font12.d \
 ./Core/Src/LCDrv_f4_spi/Fonts/font16.d \
 ./Core/Src/LCDrv_f4_spi/Fonts/font20.d \
 ./Core/Src/LCDrv_f4_spi/Fonts/font24.d \
 ./Core/Src/LCDrv_f4_spi/Fonts/font8.d 
+
+OBJS += \
+./Core/Src/LCDrv_f4_spi/Fonts/font12.o \
+./Core/Src/LCDrv_f4_spi/Fonts/font16.o \
+./Core/Src/LCDrv_f4_spi/Fonts/font20.o \
+./Core/Src/LCDrv_f4_spi/Fonts/font24.o \
+./Core/Src/LCDrv_f4_spi/Fonts/font8.o 
 
 
 # Each subdirectory must supply rules for building sources it contributes

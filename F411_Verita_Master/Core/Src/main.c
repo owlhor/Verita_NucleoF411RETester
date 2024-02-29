@@ -65,14 +65,16 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define FW_Master_Ver 0x10260523
+#define FW_Master_Ver 0x12290224
 
 #define INA219_Wrk
-#define Current_limit_mA 600
-#define Current_treash_mA 250
-#define MCUTemp_treash 60 //  Celcius
 
-#define ff_runfull 3 // full loop run HW boot gpio
+//// use hw_par instead
+//#define Current_limit_mA 600
+//#define Current_treash_mA 250
+//#define MCUTemp_treash 60 //  Celcius
+
+#define ff_runfull 3 // flag full loop run HW boot gpio
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -123,15 +125,42 @@ INA219_Read_Set inata; // read MCU first point
 INA219_Read_Set inatb; // read Brd second point
 INA219_Conf_Strc cofgra;
 
+struct _hw_param_chk{
+
+	/* cur = current
+	 * vol = voltage
+	 * mct = MCU Temp
+	 *
+	 * lim = limit; over and go to Danger
+	 * min = minimum
+	 * tsh = treashold val to report fail
+	 */
+	uint16_t cur_all_lim_mA;
+	uint16_t cur_all_min_mA;
+	uint16_t cur_brd_tsh_mA;
+	uint16_t cur_mcu_tsh_mA;
+	uint16_t mct_tsh_c;
+
+	float    vol_3VSTlnk_tsh_V;
+	float    vol_5V_tsh_V;
+	uint16_t vol_3V3_tsh_mV;
+} hw_par;
 //// ---------------- MCP3208 ---------------------------
 struct _mcp_read{
 	uint16_t raw[8];
 	float cv[8];
 }mcp_read;
 //// -------------- Timestamp ------------------------------
-uint64_t timestamp_one = 0;
-uint64_t timestamp_sensors = 0;
-uint64_t timestamp_buzbtn = 0; // in while
+//uint64_t timestamp_one = 0;
+//uint64_t timestamp_sensors = 0;
+//uint64_t timestamp_buzbtn = 0; // in while
+struct _timestamp{
+	uint64_t one;
+	uint64_t sensors;
+	uint64_t bzbtn;
+	uint64_t prt_mch; // protect machine
+	uint64_t mcu_rq;
+} timestamp;
 
 uint32_t _millis = 0;
 //// ------------------- Grandstate & flags & buttons--------------------------
@@ -139,7 +168,7 @@ uint32_t _millis = 0;
 uint8_t flag_manual_relay = 0;
 
 struct _bzzr{
-	uint8_t flag; // flag counter for buzzer
+	uint8_t flag; // flag counter for buzzer, n times buzzer will scream
 	uint16_t priod_up;
 	uint16_t priod_dn;
 	uint32_t timestamp;
@@ -179,28 +208,17 @@ struct _hardwarescore{
 
 static enum _GrandState{
 	init,
-	pre_lobby,
-	lobby,
-	pre_hw_chk,
-	hw_chk,
-	pre_fw_lob,
-	fw_lob,
+	pre_lobby, lobby,
+	pre_hw_chk, hw_chk,
+	pre_fw_lob, fw_lob,
 	pre_fw_erase,
-	pre_bootloader,
-	pnd_bootloader,
-	s_bootloader,
-	pre_monitor,
-	monitor,
-	pre_gpio_chk,
-	gpio_chk,
-	pre_danger,
-	danger,
-	pre_about,
-	about,
-	pre_author,
-	author,
-	pre_ppun,
-	ppun
+	pre_bootloader, pnd_bootloader, s_bootloader,
+	pre_monitor, monitor,
+	pre_gpio_chk, gpio_chk,
+	pre_danger, danger,
+	pre_about, about,
+	pre_author, author,
+	pre_ppun, ppun
 }GrandState = pre_lobby;
 
 //// lists All port - pin to inspect first // avoid special pin like osilators / UART
@@ -325,6 +343,7 @@ void Protection_machine();
 void manual_relay();
 void Compare_pin_32(uint32_t raw32, uint16_t *Lista_GPIOx, uint8_t gpst,char *outchar);
 void CheckAllPass();
+void veritaPTC_reset();
 
 void gpio_BL_UART_activate();
 void gpio_BL_UART_Deactivate();
@@ -385,6 +404,16 @@ int main(void)
   TIM3->CNT = 0x8000;
   knobtick[0] = TIM3->CNT;
 
+  //// Hardware Check parameter assign
+  hw_par.cur_all_lim_mA = 600; // 250 60
+  hw_par.cur_mcu_tsh_mA = 150;
+  hw_par.cur_brd_tsh_mA = 280;
+  hw_par.cur_all_min_mA = 1;
+  hw_par.mct_tsh_c  	= 60;
+  hw_par.vol_5V_tsh_V   = 4.3;
+  hw_par.vol_3VSTlnk_tsh_V = 2.8;
+  hw_par.vol_3V3_tsh_mV = 2900;
+
   //// buzzer raram setting
   buzzr.flag = 1;
   buzzr.priod_up = 250;
@@ -399,6 +428,11 @@ int main(void)
   gScr.fullflag = 0;
 
   k_flag.cnt = 0; k_flag.dn = 0; k_flag.up = 0;
+
+  timestamp.bzbtn = 0;
+  timestamp.one = 0;
+  timestamp.prt_mch = 0;
+  timestamp.sensors = 0;
 
   //// make sure
   HAL_GPIO_WritePin(Client_NRST_Trg_GPIO_PORT, Client_NRST_Trg_GPIO_PIN, GPIO_PIN_RESET);
@@ -434,7 +468,6 @@ int main(void)
 
    //gpio_BL_UART_Deactivate();
 
-
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -454,8 +487,8 @@ int main(void)
 	  //// ----------------------------------------------------
 
 
-	  if (HAL_GetTick() >= timestamp_buzbtn){
-		timestamp_buzbtn += 20;
+	  if (HAL_GetTick() >= timestamp.bzbtn){
+		timestamp.bzbtn = HAL_GetTick() + 20;
 
 		knob_rotter();
 		//running_box();
@@ -503,8 +536,8 @@ int main(void)
 	  }// timestamp_dis
 
 
-	  if (HAL_GetTick() >= timestamp_one){
-		  timestamp_one += 500;
+	  if (HAL_GetTick() >= timestamp.one){
+		  timestamp.one += 500;
 		  HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
 
 		  GrandState_Verita();
@@ -512,51 +545,72 @@ int main(void)
 		  } // timestamp_one
 
 
-	  if(HAL_GetTick() >= timestamp_sensors + 125){
-		  timestamp_sensors = HAL_GetTick(); // in case this func is temporary terminate, can continue
+	  if(GrandState == hw_chk || GrandState == monitor || GrandState == gpio_chk){
+		  if(HAL_GetTick() >= timestamp.sensors){
+			  timestamp.sensors = HAL_GetTick() + 150; // in case this func is temporary terminate, can continue
 
-		  /* Request every dynamic parameters
-		   *  - INA219#1 INA219#2
-		   *  - MCP3208 CH[0..7]
-		   *  - Client's MCU temp rwquest
-		   * */
+			  /* Request every dynamic parameters
+			   *  - INA219#1 INA219#2
+			   *  - MCP3208 CH[0..7]
+			   *  - Client's MCU temp rwquest
+			   * */
 
-		  //if(GrandState != pre_gpio_chk){
-		  if(GrandState == monitor || GrandState == gpio_chk){
-			  Tx_UART_Verita_Command(&huart6, VRC_Request, VR_CPU_Temp);// request first > pending > convert
+			  //if(GrandState != pre_gpio_chk){
+			  //// separate the request
+//			  if(GrandState == monitor || GrandState == gpio_chk){
+//				  Tx_UART_Verita_Command(&huart6, VRC_Request, VR_CPU_Temp);// request first > pending > convert
+//			  }
+
+			  inata.Bus_V   = INA219Read_BusV(&hi2c1, INA219_ADDR_1);
+			  inata.CURRENT = INA219Read_Current(&hi2c1, INA219_ADDR_1);
+			  inata.POWER   = INA219Read_Power(&hi2c1, INA219_ADDR_1);
+			  inata.SHUNT_V = INA219Read_ShuntV(&hi2c1, INA219_ADDR_1);
+
+			  inatb.Bus_V   = INA219Read_BusV(&hi2c1, INA219_ADDR_2);
+			  inatb.CURRENT = INA219Read_Current(&hi2c1, INA219_ADDR_2);
+			  inatb.POWER   = INA219Read_Power(&hi2c1, INA219_ADDR_2);
+			  inatb.SHUNT_V = INA219Read_ShuntV(&hi2c1, INA219_ADDR_2);
+
+			  mcp_read.raw[0] = MCP3208_READ_8_DataSPI(&hspi3, M8_CH0);
+			  mcp_read.raw[1] = MCP3208_READ_8_DataSPI(&hspi3, M8_CH1);
+			  mcp_read.raw[2] = MCP3208_READ_8_DataSPI(&hspi3, M8_CH2);
+			  mcp_read.raw[3] = MCP3208_READ_8_DataSPI(&hspi3, M8_CH3);
+			  mcp_read.raw[4] = MCP3208_READ_8_DataSPI(&hspi3, M8_CH4);
+			  mcp_read.raw[5] = MCP3208_READ_8_DataSPI(&hspi3, M8_CH5);
+			  mcp_read.raw[6] = MCP3208_READ_8_DataSPI(&hspi3, M8_CH6);
+			  mcp_read.raw[7] = MCP3208_READ_8_DataSPI(&hspi3, M8_CH7);
+
+			  for(register int i = 0;i <= 7;i++){
+				  mcp_read.cv[i] = MCP320x_ADCbit_to_Volt(mcp_read.raw[i]);
+			  }
+
+			  client_temp_mcuCC = TempEquat(ADCTVolta(VRB_CL.Mark.cputemp));
+
+			  Protection_machine();
+			  manual_relay();
+		  } //// sensor
+	  } //// sensor state cover
+
+	  //// Protection machine speeder
+	  if(GrandState == hw_chk || GrandState == monitor){
+		  if(HAL_GetTick() >= timestamp.prt_mch){
+		  	 timestamp.prt_mch = HAL_GetTick() + 50;
+
+			 inata.CURRENT = INA219Read_Current(&hi2c1, INA219_ADDR_1);
+			 inatb.CURRENT = INA219Read_Current(&hi2c1, INA219_ADDR_2);
+
+		  	 Protection_machine();
 		  }
+	  } // ptc mach
 
-
-		  inata.Bus_V   = INA219Read_BusV(&hi2c1, INA219_ADDR_1);
-		  inata.CURRENT = INA219Read_Current(&hi2c1, INA219_ADDR_1);
-		  inata.POWER   = INA219Read_Power(&hi2c1, INA219_ADDR_1);
-		  inata.SHUNT_V = INA219Read_ShuntV(&hi2c1, INA219_ADDR_1);
-
-		  inatb.Bus_V   = INA219Read_BusV(&hi2c1, INA219_ADDR_2);
-		  inatb.CURRENT = INA219Read_Current(&hi2c1, INA219_ADDR_2);
-		  inatb.POWER   = INA219Read_Power(&hi2c1, INA219_ADDR_2);
-		  inatb.SHUNT_V = INA219Read_ShuntV(&hi2c1, INA219_ADDR_2);
-
-		  mcp_read.raw[0] = MCP3208_READ_8_DataSPI(&hspi3, M8_CH0);
-		  mcp_read.raw[1] = MCP3208_READ_8_DataSPI(&hspi3, M8_CH1);
-		  mcp_read.raw[2] = MCP3208_READ_8_DataSPI(&hspi3, M8_CH2);
-		  mcp_read.raw[3] = MCP3208_READ_8_DataSPI(&hspi3, M8_CH3);
-		  mcp_read.raw[4] = MCP3208_READ_8_DataSPI(&hspi3, M8_CH4);
-		  mcp_read.raw[5] = MCP3208_READ_8_DataSPI(&hspi3, M8_CH5);
-		  mcp_read.raw[6] = MCP3208_READ_8_DataSPI(&hspi3, M8_CH6);
-		  mcp_read.raw[7] = MCP3208_READ_8_DataSPI(&hspi3, M8_CH7);
-
-		  for(register int i = 0;i <= 7;i++){
-			  mcp_read.cv[i] = MCP320x_ADCbit_to_Volt(mcp_read.raw[i]);
-		  }
-
-
-		  client_temp_mcuCC = TempEquat(ADCTVolta(VRB_CL.Mark.cputemp));
-
-
-		  Protection_machine();
-		  manual_relay();
-	  }
+	  /// MCU request
+	  if(GrandState == gpio_chk || GrandState == monitor){
+	  		 if(HAL_GetTick() >= timestamp.mcu_rq){
+	  		  	timestamp.mcu_rq = HAL_GetTick() + 150;
+	  		  	// request first > pending > convert
+	  		  	Tx_UART_Verita_Command(&huart6, VRC_Request, VR_CPU_Temp);
+	  		 }
+	  	  } // mcutemp rq
 
 	  }
   /* USER CODE END 3 */
@@ -997,9 +1051,11 @@ void running_box(){
 		  }
 
 }
-
+/**
+  * @brief box_pointer
+	write new box at the new position posx posy and erase the previous box
+  */
 void box_pointer(uint16_t posx, uint16_t posy){
-	/* write new box at the new position posx posy and erase the previous box*/
 	static disp_posixy box1;
 
 	//// erase previous box
@@ -1018,6 +1074,11 @@ void box_pointer(uint16_t posx, uint16_t posy){
 	flag_boxpoint_start = 1;
 }
 
+/**
+  * @brief Simple_Scr
+	4x Button manager, read button status and command to dtake action. 
+	read IN directly from registers.
+  */
 void simple_scr(){
 	  //ili9341_DrawRGBImage(60, 80, 128, 128, (uint16_t*)image_data_ImageoftestN2);
 
@@ -1039,7 +1100,11 @@ void simple_scr(){
 
 }
 
-
+/**
+  * @brief Button_machine
+	4x Button manager, read button status and command to dtake action. 
+	read IN directly from registers.
+  */
 void Button_machine(){
 
 	/* 4x btn_read[4]{
@@ -1072,9 +1137,12 @@ void Button_machine(){
 			if(btn_read[2] == 0b0100){ // SW3
 				k_flag.cnt++;
 			}
-//			if(btn_read[2] == 0b0100){ // SW4
-//				//// work for SW4 here
-//			}
+
+			if(btn_read[2] == 0b0010){ // SW4
+				//// buzzer dummy
+				buzzr.flag = 1;
+				buzzer_scream_cnt();
+			}
 
 		}
 
@@ -1086,14 +1154,14 @@ void Button_machine(){
 
 		//// Rotary Encoder knob Button----------------------------------
 		//// use NVIC GPIO_7 instead
-//		btn_K[1] = btn_K[0];
-//		btn_K[0] = HAL_GPIO_ReadPin(KnobBTN_GPIO_Port, KnobBTN_Pin);
-//
-//		if(btn_K[0] == 0 && btn_K[1]){
-//			btn_k_cnt++;
-//		}
+		//		btn_K[1] = btn_K[0];
+		//		btn_K[0] = HAL_GPIO_ReadPin(KnobBTN_GPIO_Port, KnobBTN_Pin);
+		//
+		//		if(btn_K[0] == 0 && btn_K[1]){
+		//			btn_k_cnt++;
+		//		}
 
-//		knob_rotter();
+		//		knob_rotter();
 
 }
 
@@ -1123,10 +1191,13 @@ void knob_rotter(){
 
 }
 
+/**
+  * @brief Protection_machine
+	Force Jump to state Danger IF found overcurrent consume from client board
+  */
 void Protection_machine(){
-
 	//// overcurrent
-	if (inata.CURRENT >= Current_limit_mA || inatb.CURRENT >= Current_limit_mA){
+	if (inata.CURRENT >= hw_par.cur_all_lim_mA || inatb.CURRENT >= hw_par.cur_all_lim_mA){
 		gScr.counter_overcurrent++;
 
 		if(gScr.counter_overcurrent >= 2 && !(GrandState == pre_danger || GrandState == danger)){
@@ -1147,6 +1218,10 @@ void Protection_machine(){
 
 }
 
+/**
+  * @brief manual_relay
+	toggle relay using button // state monitor only
+  */
 void manual_relay(){
 	if(flag_manual_relay){
 
@@ -1156,7 +1231,6 @@ void manual_relay(){
 		flag_manual_relay = 0;
 	}
 }
-
 
 void Compare_pin_32(uint32_t raw32, uint16_t *Lista_GPIOx, uint8_t gpst,char *outchar){
 	/*  @brief compare uint32_t data given from gpio_testscript then compared to find the same pair
@@ -1220,6 +1294,10 @@ void Compare_pin_32(uint32_t raw32, uint16_t *Lista_GPIOx, uint8_t gpst,char *ou
 	}
 }
 
+/**
+  * @brief CheckAllPass
+	Check and count up score for GPIO checking
+  */
 void CheckAllPass(){
 	cnt_allpass = 0; // init reset
 
@@ -1239,6 +1317,11 @@ void CheckAllPass(){
 
 }
 
+/**
+  * @brief Buzzer Machine
+	flag // flag counter for buzzer, n times buzzer will scream
+	priod_up  priod_dn -> time in ms to scream and sleep buzzer in 1 period
+  */
 void buzzer_scream_cnt(){
 	static enum {bz_init, bz_silent, bz_scream} bz_st = bz_init;
 
@@ -1293,7 +1376,11 @@ void buzzer_scream_cnt(){
 
 }
 
-
+/**
+  * @brief GrandState_Verita Handle ALL MAIN state of Verita Machine
+  * @param None
+  * @retval None
+  */
 void GrandState_Verita(){
 
 	switch(GrandState){
@@ -1395,7 +1482,7 @@ void GrandState_Verita(){
 			if(stboxp.ch_is == 3){
 				GrandState = pre_gpio_chk;
 				HAL_GPIO_WritePin(RelayClient_GPIO_Port, RelayClient_Pin, GPIO_PIN_SET);
-				gScr.timelog = HAL_GetTick() + 4500;
+				gScr.timelog = HAL_GetTick() + 6500;
 			}
 			if(stboxp.ch_is == 4){GrandState = pre_lobby;}
 
@@ -1505,9 +1592,9 @@ void GrandState_Verita(){
 	case hw_chk:
 		stboxp.choice_set = bpoxy_def;
 
-		//// 5V
+		//// 5V -----------------------------------------------------------------------
 		sprintf(TextDispBuffer,"%4d", (uint16_t)(mcp_read.cv[1]*1000)); // inatb.inatb.Bus_V
-		if(mcp_read.cv[1] <= 4.300){
+		if(mcp_read.cv[1] <= hw_par.vol_5V_tsh_V){ //// 4.300
 			ili9341_WriteString(100, 50, TextDispBuffer, Font20, cl_RED, cl_BLACK);
 			ili9341_WriteString(220, 50, "FAIL", Font20, cl_RED, cl_BLACK);
 			hwscor.p5V = 0;
@@ -1516,9 +1603,9 @@ void GrandState_Verita(){
 			ili9341_WriteString(220, 50, "PASS", Font20, cl_GREEN, cl_BLACK);
 			hwscor.p5V = 1;
 		}
-		//// 3V3
+		//// 3V3 -----------------------------------------------------------------------
 		sprintf(TextDispBuffer,"%4d", inata.Bus_V);
-		if(inata.Bus_V <= 2900){
+		if(inata.Bus_V <= hw_par.vol_3V3_tsh_mV){ // 2900
 			ili9341_WriteString(100, 75, TextDispBuffer, Font20, cl_RED, cl_BLACK);
 			ili9341_WriteString(220, 75, "FAIL", Font20, cl_RED, cl_BLACK);
 			hwscor.p3V3 = 0;
@@ -1527,9 +1614,9 @@ void GrandState_Verita(){
 			ili9341_WriteString(220, 75, "PASS", Font20, cl_GREEN, cl_BLACK);
 			hwscor.p3V3 = 1;
 		}
-		//// 3V3 STLink
+		//// 3V3 STLink ------------------------------------------------------------------------
 		sprintf(TextDispBuffer,"%4d", (uint16_t)(mcp_read.cv[0]*1000));
-		if(mcp_read.cv[0] <= 2.90){
+		if(mcp_read.cv[0] <= hw_par.vol_3VSTlnk_tsh_V){ // 2.9
 			ili9341_WriteString(100, 100, TextDispBuffer, Font20, cl_RED, cl_BLACK);
 			ili9341_WriteString(220, 100, "FAIL", Font20, cl_RED, cl_BLACK);
 			hwscor.p3VSTL = 0;
@@ -1538,13 +1625,13 @@ void GrandState_Verita(){
 			ili9341_WriteString(220, 100, "PASS", Font20, cl_GREEN, cl_BLACK);
 			hwscor.p3VSTL = 1;
 		}
-		 //// I Brd
+		 //// I Brd ----------------------------------------------------------------------------
 		sprintf(TextDispBuffer,"%4d", inatb.CURRENT);
-		if(inatb.CURRENT >= Current_treash_mA){
+		if(inatb.CURRENT >= hw_par.cur_brd_tsh_mA){ // Current_treash_mA
 			ili9341_WriteString(100, 125, TextDispBuffer, Font20, cl_RED, cl_BLACK);
 			ili9341_WriteString(220, 125, "FAIL", Font20, cl_RED, cl_BLACK);
 			hwscor.pIbrd = 0;
-		}else if (inatb.CURRENT <= 1) { // 8
+		}else if (inatb.CURRENT <= hw_par.cur_all_min_mA) { // 8
 			ili9341_WriteString(100, 125, TextDispBuffer, Font20, cl_WHITE, cl_BLACK);
 			ili9341_WriteString(220, 125, "N/A", Font20, cl_ORANGE, cl_BLACK);
 		}
@@ -1556,11 +1643,11 @@ void GrandState_Verita(){
 
 		//// I MCU
 		sprintf(TextDispBuffer,"%4d", inata.CURRENT);
-		if(inata.CURRENT >= Current_treash_mA){
+		if(inata.CURRENT >= hw_par.cur_mcu_tsh_mA){
 			ili9341_WriteString(100, 150, TextDispBuffer, Font20, cl_RED, cl_BLACK);
 			ili9341_WriteString(220, 150, "FAIL", Font20, cl_RED, cl_BLACK);
 			hwscor.pImcu = 0;
-		}else if (inata.CURRENT <= 3) {
+		}else if (inata.CURRENT <= hw_par.cur_all_min_mA) {
 			ili9341_WriteString(100, 150, TextDispBuffer, Font20, cl_WHITE, cl_BLACK);
 			ili9341_WriteString(220, 150, "N/A", Font20, cl_ORANGE, cl_BLACK);
 			ili9341_WriteString(275, 145, "Unplug", Font12, cl_GREENYELLOW, cl_BLACK);
@@ -1604,11 +1691,11 @@ void GrandState_Verita(){
 
 				hwscor.ptime_scores = 0;
 
-				if(inatb.CURRENT - inata.CURRENT >= 150 && inatb.CURRENT >= Current_treash_mA){
+				if(inatb.CURRENT - inata.CURRENT >= 150 && inatb.CURRENT >= hw_par.cur_brd_tsh_mA){
 				//// board current bad
 				ili9341_WriteString(110, 180, "Board Bad", Font16, cl_YELLOW, cl_BLACK);
 				}
-				if(inata.CURRENT >= Current_treash_mA){
+				if(inata.CURRENT >= hw_par.cur_mcu_tsh_mA){
 				//// Bad MCU
 					ili9341_WriteString(20, 180, "MCU Bad", Font16, cl_YELLOW, cl_BLACK);
 				}
@@ -1709,7 +1796,7 @@ void GrandState_Verita(){
 			else{
 				ili9341_WriteString(40, 180, "-", Font16, cl_GRAY, cl_BLACK);
 			}
-			ili9341_FillRect(40, 180, 15, 30, cl_BLACK);
+			ili9341_FillRect(40, 180, 30, 30, cl_BLACK);
 			//// display ---------------
 		}
 		//// last round: send only left bit (less 255)
@@ -1720,10 +1807,10 @@ void GrandState_Verita(){
 
 
 		//// Hard reset--------
-//		HAL_GPIO_WritePin(RelayClient_GPIO_Port, RelayClient_Pin, GPIO_PIN_RESET);
-//		HAL_Delay(50);
-//		HAL_GPIO_WritePin(RelayClient_GPIO_Port, RelayClient_Pin, GPIO_PIN_SET);
-//		HAL_Delay(1000);
+		//		HAL_GPIO_WritePin(RelayClient_GPIO_Port, RelayClient_Pin, GPIO_PIN_RESET);
+		//		HAL_Delay(50);
+		//		HAL_GPIO_WritePin(RelayClient_GPIO_Port, RelayClient_Pin, GPIO_PIN_SET);
+		//		HAL_Delay(1000);
 		//// Hard reset--------
 
 		ili9341_WriteStringNoBG(140, 160, "Finish", Font24, cl_GREEN);
@@ -1763,10 +1850,6 @@ void GrandState_Verita(){
 				sprintf(TextDispBuffer,"FULL"); ili9341_WriteString(250, 5, TextDispBuffer, Font20, cl_RED, cl_YELLOW);
 			}
 
-//			ili9341_WriteStringNoBG(15, 50, "PUR:", Font20, cl_WHITE);
-//			ili9341_WriteStringNoBG(15, 85, "PP:", Font20, cl_WHITE);
-//			ili9341_WriteStringNoBG(15, 120, "OD:", Font20, cl_WHITE);
-
 			ili9341_WriteStringNoBG(250, 175, "MCU Temp:", Font12, cl_WHITE);
 			ili9341_WriteStringNoBG(250, 210, "FWID:", Font12, cl_WHITE);
 			ili9341_WriteStringNoBG(30, 220, "Finish >> ", Font16, cl_GREENYELLOW);
@@ -1775,7 +1858,7 @@ void GrandState_Verita(){
 			//// checkif GPIO test is finished ?  || HAL_GetTick() >= gScr.timelog
 			if(VRB_CL.Mark.Flag_next){ // runalltest cplt
 				Tx_UART_Verita_Command(&huart6, VRC_Flag_ger, VRF_SendALLTestData);
-				HAL_Delay(100);
+				HAL_Delay(150);
 
 				if(VRB_CL.Mark.Flag_ger == VRF_SendALLTestData){ //// 'll send this flag back after cplt
 
@@ -1806,21 +1889,13 @@ void GrandState_Verita(){
 					 }else{}
 
 					 sprintf(TextDispBuffer, WR_A_PUPDR); ili9341_WriteStringNoBG(10, 35, TextDispBuffer, Font16, cl_WHITE);
-
 					 sprintf(TextDispBuffer, WR_A_OPP); ili9341_WriteStringNoBG(10, 55, TextDispBuffer, Font16, cl_WHITE);
-
 					 sprintf(TextDispBuffer, WR_A_OOD); ili9341_WriteStringNoBG(10, 75, TextDispBuffer, Font16, cl_WHITE);
-
 					 sprintf(TextDispBuffer, WR_B_PUPDR); ili9341_WriteStringNoBG(10, 95, TextDispBuffer, Font16, cl_WHITE);
-
 					 sprintf(TextDispBuffer, WR_B_OPP); ili9341_WriteStringNoBG(10, 115, TextDispBuffer, Font16, cl_WHITE);
-
 					 sprintf(TextDispBuffer, WR_B_OOD); ili9341_WriteStringNoBG(10, 135, TextDispBuffer, Font16, cl_WHITE);
-
 					 sprintf(TextDispBuffer, WR_C_PUPDR); ili9341_WriteStringNoBG(10, 155, TextDispBuffer, Font16, cl_WHITE);
-
 					 sprintf(TextDispBuffer, WR_C_OPP); ili9341_WriteStringNoBG(10, 175, TextDispBuffer, Font16, cl_WHITE);
-
 					 sprintf(TextDispBuffer, WR_C_OOD); ili9341_WriteStringNoBG(10, 195, TextDispBuffer, Font16, cl_WHITE);
 
 					VRB_CL.Mark.Flag_ger = 0;
@@ -1859,13 +1934,13 @@ void GrandState_Verita(){
 
 
 			sprintf(TextDispBuffer,"%2.1f C", (client_temp_mcuCC < 0) ? 0 : client_temp_mcuCC);
-			if(client_temp_mcuCC < MCUTemp_treash){
+			if(client_temp_mcuCC < hw_par.mct_tsh_c){
 					ili9341_WriteString(250, 190, TextDispBuffer, Font16, cl_LIGHTGREY, cl_BLACK);
 			}else{
 					ili9341_WriteString(250, 190, TextDispBuffer, Font16, cl_RED, cl_BLACK);
 			}
 
-			sprintf(TextDispBuffer,"%08x", (uint)VRB_CL.Mark.FirmwareVer);
+			sprintf(TextDispBuffer,"%08x", (uint) VRB_CL.Mark.FirmwareVer); // uint can't use after cubeide 1.14
 			ili9341_WriteStringNoBG(250, 225, TextDispBuffer, Font12, cl_WHITE);
 
 
@@ -1877,12 +1952,14 @@ void GrandState_Verita(){
 				}
 
 				k_flag.cnt = 0;
-				VRB_CL.Mark.FirmwareVer = 0x00; // clear if nextstep break
-				VRB_CL.Mark.cputemp = 0; //// reset temp, prevent old data show
-				resetgpio_char();
+				// transfer to veritaPTC_reset();
+				//VRB_CL.Mark.FirmwareVer = 0x00; // clear if nextstep break
+				//VRB_CL.Mark.cputemp = 0; //// reset temp, prevent old data show
 
 				//// Reset Verita PTC Buffer counter
-				// n/a n/a
+				resetgpio_char();
+				//// reset UART, solve PTC fail???
+				veritaPTC_reset();
 				////
 
 				gScr.fullflag = 0;
@@ -1976,7 +2053,7 @@ void GrandState_Verita(){
 		//// Client's CPU Temp
 		sprintf(TextDispBuffer,"%2.1f C", (client_temp_mcuCC < 0) ? 0 : client_temp_mcuCC);
 		//sprintf(TextDispBuffer,"%2.1f C", client_temp_mcuCC);
-			if(client_temp_mcuCC < MCUTemp_treash){
+			if(client_temp_mcuCC < hw_par.mct_tsh_c){
 				ili9341_WriteString(100, 190, TextDispBuffer, Font16, cl_LIGHTGREY, cl_BLACK);
 			}else{
 				ili9341_WriteString(100, 190, TextDispBuffer, Font16, cl_RED, cl_BLACK);
@@ -1988,6 +2065,7 @@ void GrandState_Verita(){
 			VRB_CL.Mark.cputemp = 0; //// reset temp, prevent old data show
 			HAL_GPIO_WritePin(RelayClient_GPIO_Port, RelayClient_Pin, GPIO_PIN_RESET);
 			k_flag.cnt = 0;
+			veritaPTC_reset();
 			}
 		break; // monitor
 
@@ -2008,7 +2086,7 @@ void GrandState_Verita(){
 		ili9341_WriteString(20, 130, "I Brd:", Font16, cl_WHITE, cl_BLACK);
 
 		sprintf(TextDispBuffer,"%4d", inata.CURRENT);
-		if(inata.CURRENT >= Current_limit_mA){
+		if(inata.CURRENT >= hw_par.cur_mcu_tsh_mA){
 			ili9341_WriteString(120, 100, TextDispBuffer, Font20, cl_RED, cl_BLACK);
 			ili9341_WriteStringNoBG(220, 100, "FAIL", Font20, cl_RED);
 		}else{
@@ -2016,7 +2094,7 @@ void GrandState_Verita(){
 			}
 
 		sprintf(TextDispBuffer,"%4d", inatb.CURRENT);
-		if(inatb.CURRENT >= Current_limit_mA){
+		if(inatb.CURRENT >= hw_par.cur_brd_tsh_mA){
 			ili9341_WriteString(120, 130, TextDispBuffer, Font20, cl_RED, cl_BLACK);
 			ili9341_WriteStringNoBG(220, 130, "FAIL", Font20, cl_RED);
 		}else{
@@ -2054,7 +2132,7 @@ void GrandState_Verita(){
 		ili9341_WriteStringNoBG(20, 165, "github.com/owlhor/", Font16, cl_CYAN);
 		ili9341_WriteStringNoBG(20, 180, "Verita_NucleoF411RETester", Font16, cl_CYAN);
 
-		sprintf(TextDispBuffer,"Program Version: %08X", FW_Master_Ver);
+		sprintf(TextDispBuffer,"Master Version: %08X", FW_Master_Ver);
 		ili9341_WriteStringNoBG(135, 215, TextDispBuffer, Font12, cl_NAVY);
 
 		GrandState = about;
@@ -2175,6 +2253,7 @@ void gpio_BL_UART_Deactivate(){
 		 GPIOA->PUPDR = tyyy;
 }
 
+//// Reset every GPIO char for next test
 void resetgpio_char(){
 
 	sprintf(WR_A_PUPDR, "A_PUR: ");
@@ -2188,6 +2267,21 @@ void resetgpio_char(){
 	sprintf(WR_A_OOD, "A_OOD: ");
 	sprintf(WR_B_OOD, "B_OOD: ");
 	sprintf(WR_C_OOD, "C_OOD: ");
+}
+
+//// Verita PTC reset ??? try
+void veritaPTC_reset(){
+	//   HAL_UART_DMAStop(&huart6);
+	//   HAL_UART_DMAPause(&huart6);
+	//   HAL_UART_DMAResume(&huart6);
+
+	//HAL_UART_DeInit(&huart6);
+
+	VRB_CL.Mark.FirmwareVer = 0x00; // clear if nextstep break
+	VRB_CL.Mark.cputemp = 0; //// reset temp, prevent old data show
+	for (register int i = 0; i <= 9; i++){
+		VRB_CL.U32[i] = 0x00;
+	}
 }
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){

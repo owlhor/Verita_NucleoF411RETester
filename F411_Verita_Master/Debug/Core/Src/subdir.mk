@@ -16,18 +16,6 @@ C_SRCS += \
 ../Core/Src/sysmem.c \
 ../Core/Src/system_stm32f4xx.c 
 
-OBJS += \
-./Core/Src/INA219.o \
-./Core/Src/MCP320X.o \
-./Core/Src/Verita_PTC.o \
-./Core/Src/bootloader_UART.o \
-./Core/Src/main.o \
-./Core/Src/stm32f4xx_hal_msp.o \
-./Core/Src/stm32f4xx_it.o \
-./Core/Src/syscalls.o \
-./Core/Src/sysmem.o \
-./Core/Src/system_stm32f4xx.o 
-
 C_DEPS += \
 ./Core/Src/INA219.d \
 ./Core/Src/MCP320X.d \
@@ -39,6 +27,18 @@ C_DEPS += \
 ./Core/Src/syscalls.d \
 ./Core/Src/sysmem.d \
 ./Core/Src/system_stm32f4xx.d 
+
+OBJS += \
+./Core/Src/INA219.o \
+./Core/Src/MCP320X.o \
+./Core/Src/Verita_PTC.o \
+./Core/Src/bootloader_UART.o \
+./Core/Src/main.o \
+./Core/Src/stm32f4xx_hal_msp.o \
+./Core/Src/stm32f4xx_it.o \
+./Core/Src/syscalls.o \
+./Core/Src/sysmem.o \
+./Core/Src/system_stm32f4xx.o 
 
 
 # Each subdirectory must supply rules for building sources it contributes

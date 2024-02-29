@@ -8,13 +8,13 @@ C_SRCS += \
 ../Core/Src/LCDrv_f4_spi/ili9341.c \
 ../Core/Src/LCDrv_f4_spi/lcd_io_spi.c 
 
-OBJS += \
-./Core/Src/LCDrv_f4_spi/ili9341.o \
-./Core/Src/LCDrv_f4_spi/lcd_io_spi.o 
-
 C_DEPS += \
 ./Core/Src/LCDrv_f4_spi/ili9341.d \
 ./Core/Src/LCDrv_f4_spi/lcd_io_spi.d 
+
+OBJS += \
+./Core/Src/LCDrv_f4_spi/ili9341.o \
+./Core/Src/LCDrv_f4_spi/lcd_io_spi.o 
 
 
 # Each subdirectory must supply rules for building sources it contributes

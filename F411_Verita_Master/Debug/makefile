@@ -60,6 +60,12 @@ F411_Verita_Master.hex \
 OBJCOPY_BIN += \
 F411_Verita_Master.bin \
 
+OBJCOPY_VERILOG += \
+F411_Verita_Master.verilog \
+
+OBJCOPY_SREC += \
+F411_Verita_Master.srec \
+
 
 # All Target
 all: main-build
@@ -93,12 +99,22 @@ F411_Verita_Master.bin: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEP
 	@echo 'Finished building: $@'
 	@echo ' '
 
+F411_Verita_Master.verilog: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-objcopy  -O verilog $(EXECUTABLES) "F411_Verita_Master.verilog"
+	@echo 'Finished building: $@'
+	@echo ' '
+
+F411_Verita_Master.srec: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-objcopy  -O srec $(EXECUTABLES) "F411_Verita_Master.srec"
+	@echo 'Finished building: $@'
+	@echo ' '
+
 # Other Targets
 clean:
-	-$(RM) F411_Verita_Master.bin F411_Verita_Master.elf F411_Verita_Master.hex F411_Verita_Master.list F411_Verita_Master.map default.size.stdout
+	-$(RM) F411_Verita_Master.bin F411_Verita_Master.elf F411_Verita_Master.hex F411_Verita_Master.list F411_Verita_Master.map F411_Verita_Master.srec F411_Verita_Master.verilog default.size.stdout
 	-@echo ' '
 
-secondary-outputs: $(SIZE_OUTPUT) $(OBJDUMP_LIST) $(OBJCOPY_HEX) $(OBJCOPY_BIN)
+secondary-outputs: $(SIZE_OUTPUT) $(OBJDUMP_LIST) $(OBJCOPY_HEX) $(OBJCOPY_BIN) $(OBJCOPY_VERILOG) $(OBJCOPY_SREC)
 
 fail-specified-linker-script-missing:
 	@echo 'Error: Cannot find the specified linker script. Check the linker settings in the build configuration.'
