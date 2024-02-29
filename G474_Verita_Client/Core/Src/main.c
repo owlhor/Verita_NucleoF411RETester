@@ -196,6 +196,7 @@ int main(void)
 
   //// ADC Start --------------------------
   //CPUTemprdINIT();
+  //HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED);
 
   HAL_ADC_Start_DMA(&hadc1, ADCRawread.u32, 6);
   //HAL_ADC_Start_DMA(&hadc1, ADCRawreadc, 6);
@@ -240,21 +241,13 @@ int main(void)
 				  }
 
 				  sprintf(uartTXBf, WR_A_PUPDR); HAL_UART_Transmit(&hlpuart1, (uint8_t*)uartTXBf, strlen(uartTXBf),10);
-
 				  sprintf(uartTXBf, WR_A_OPP); HAL_UART_Transmit(&hlpuart1, (uint8_t*)uartTXBf, strlen(uartTXBf),10);
-
 				  sprintf(uartTXBf, WR_A_OOD); HAL_UART_Transmit(&hlpuart1, (uint8_t*)uartTXBf, strlen(uartTXBf),10);
-
 				  sprintf(uartTXBf, WR_B_PUPDR); HAL_UART_Transmit(&hlpuart1, (uint8_t*)uartTXBf, strlen(uartTXBf),10);
-
 				  sprintf(uartTXBf, WR_B_OPP); HAL_UART_Transmit(&hlpuart1, (uint8_t*)uartTXBf, strlen(uartTXBf),10);
-
 				  sprintf(uartTXBf, WR_B_OOD); HAL_UART_Transmit(&hlpuart1, (uint8_t*)uartTXBf, strlen(uartTXBf),10);
-
 				  sprintf(uartTXBf, WR_C_PUPDR); HAL_UART_Transmit(&hlpuart1, (uint8_t*)uartTXBf, strlen(uartTXBf),10);
-
 				  sprintf(uartTXBf, WR_C_OPP); HAL_UART_Transmit(&hlpuart1, (uint8_t*)uartTXBf, strlen(uartTXBf),10);
-
 				  sprintf(uartTXBf, WR_C_OOD); HAL_UART_Transmit(&hlpuart1, (uint8_t*)uartTXBf, strlen(uartTXBf),10);
 			  }
 	  		  ////
@@ -400,7 +393,7 @@ static void MX_ADC1_Init(void)
   /** Common config
   */
   hadc1.Instance = ADC1;
-  hadc1.Init.ClockPrescaler = ADC_CLOCK_ASYNC_DIV32;
+  hadc1.Init.ClockPrescaler = ADC_CLOCK_ASYNC_DIV12;
   hadc1.Init.Resolution = ADC_RESOLUTION_12B;
   hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
   hadc1.Init.GainCompensation = 0;
@@ -432,7 +425,7 @@ static void MX_ADC1_Init(void)
   */
   sConfig.Channel = ADC_CHANNEL_TEMPSENSOR_ADC1;
   sConfig.Rank = ADC_REGULAR_RANK_1;
-  sConfig.SamplingTime = ADC_SAMPLETIME_6CYCLES_5;
+  sConfig.SamplingTime = ADC_SAMPLETIME_247CYCLES_5;
   sConfig.SingleDiff = ADC_SINGLE_ENDED;
   sConfig.OffsetNumber = ADC_OFFSET_NONE;
   sConfig.Offset = 0;
@@ -598,15 +591,17 @@ float ADCTVoltar(uint16_t btt, float vref){
 //}
 
 float Tempequat_G4(int16_t data, float vref){
+	/* Get equation from RM0440 R.7, 21.4.31 Temp sensor
+	 * */
 	static int16_t TSCALT1 = TEMPSENSOR_CAL1_TEMP;
-	static int16_t TSCALT2 = TEMPSENSOR_CAL2_TEMP;
-	int16_t TCAL1 = (int32_t) *TEMPSENSOR_CAL1_ADDR; // 1037 read the ST factory calibrate value from the address
-	int16_t TCAL2 = (int32_t) *TEMPSENSOR_CAL2_ADDR; // 1378
+	static int16_t TSCALT2 = 110;
+	int16_t TCAL1 = (int16_t) *TEMPSENSOR_CAL1_ADDR; // 1037 read the ST factory calibrate value from the address
+	int16_t TCAL2 = (int16_t) *TEMPSENSOR_CAL2_ADDR; // 1378
 
 	float set1 = ((TSCALT2 - TSCALT1)*1.0) / ((TCAL2 - TCAL1)*1.0) ;
 	float set2 = ( data * (vref/3.0) )-TCAL1;
 
-	return set1 * set2 + 30 + fakeoffset; //// + 12 is fake offset
+	return (set1 * set2)+ 30 + fakeoffset; //// + 12 is fake offset
 }
 //// GPIO Testscript
 void Compare_pin_32(uint32_t raw32, uint16_t *Lista_GPIOx, uint8_t gpst,char *outchar){

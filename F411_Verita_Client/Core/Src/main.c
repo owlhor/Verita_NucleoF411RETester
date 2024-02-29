@@ -49,7 +49,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define FIRMWARE_VER 0x13072823 // 01 00 03 23  -- ver day month year 32-bit
+#define FIRMWARE_VER 0x13280723 // 01 00 03 23  -- ver day month year 32-bit
 //#define TIMx_PWM_En
 //#define GPIO_SELFTEST_SC
 /* USER CODE END PD */
